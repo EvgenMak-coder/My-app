@@ -1,0 +1,18 @@
+node_modules/
+dist/
+dev-dist/
+
+# ключи и личные данные — никогда не в репозиторий
+.env
+.env.local
+.env.*.local
+*.local.json
+*.xlsx
+
+# чужие картинки-референсы: в публичный репозиторий не выкладываем
+backgroud/
+lifestyle/
+
+.DS_Store
+Thumbs.db
+*.log

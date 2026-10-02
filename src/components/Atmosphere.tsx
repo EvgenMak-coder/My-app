@@ -1,0 +1,63 @@
+import { useEffect, useRef } from 'react'
+import { EFFECTS } from '../fx/effects'
+import { prefersReducedMotion } from '../fx/util'
+import { paletteOf, useAppearance } from '../theme/appearance'
+
+/** Неподвижный слой за всем приложением: свечение стихии, своя картинка и её эффект. */
+export function Atmosphere() {
+  const { element, background } = useAppearance()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current!
+    const ctx = canvas.getContext('2d')!
+    if (prefersReducedMotion()) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
+
+    const effect = EFFECTS[element](paletteOf(element))
+    // на телефонах с плотным экраном полного разрешения для дыма и огня не нужно
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
+    let width = 0
+    let height = 0
+    const resize = () => {
+      width = window.innerWidth
+      height = window.innerHeight
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    let raf = 0
+    let last = performance.now()
+    let t = 0
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      t += dt
+      effect.frame(ctx, width, height, t, dt)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', resize)
+    }
+  }, [element])
+
+  return (
+    <div className="atmo" aria-hidden="true">
+      {background && (
+        <>
+          <div className="image" style={{ backgroundImage: `url(${background})` }} />
+          <div className="veil" />
+        </>
+      )}
+      <canvas ref={canvasRef} />
+    </div>
+  )
+}

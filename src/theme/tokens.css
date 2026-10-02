@@ -1,0 +1,45 @@
+/* Тушь и свечение: чёрный фон и один яркий цвет стихии */
+:root {
+  --bg: #070608;
+  --surface: rgba(14, 12, 16, 0.74);
+  --surface-solid: #0e0c10;
+  --line: rgba(255, 255, 255, 0.09);
+  --text: #ece6dc;
+  --text-dim: #948c80;
+  --danger: #ff4d4d;
+
+  --font-title: 'Cormorant Garamond', 'Palatino Linotype', Georgia, serif;
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --radius: 6px;
+  --gap: 16px;
+  --nav-size: 64px;
+
+  color-scheme: dark;
+}
+
+/* Стихии — выбираются в Настройках, см. appearance.ts */
+:root,
+:root[data-element='ember'] {
+  --accent: #ff7a1a;
+  --accent-bright: #ffc078;
+  --accent-deep: #8a2f00;
+}
+
+:root[data-element='blood'] {
+  --accent: #e8212f;
+  --accent-bright: #ff7a7f;
+  --accent-deep: #6d0a12;
+}
+
+:root[data-element='storm'] {
+  --accent: #3f9dff;
+  --accent-bright: #b4dcff;
+  --accent-deep: #0f3a7a;
+}
+
+:root[data-element='shadow'] {
+  --accent: #a259ff;
+  --accent-bright: #d9b8ff;
+  --accent-deep: #3a1778;
+}
