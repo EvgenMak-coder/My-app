@@ -8,8 +8,12 @@ import {
   type LifeArea,
   type Skill,
   type SkillCategory,
+  type Credit,
+  type Goal,
+  type Salary,
   type Snapshot,
   type Titan,
+  type Transaction,
   type Workout,
   type XpEvent,
   type XpSource,
@@ -41,6 +45,7 @@ interface AreaHistoryRow { id: string; area_id: string; value: number; at: strin
 interface TitanRow { id: string; key: string; name: string; value: number; position: number }
 interface TitanHistoryRow { id: string; titan_id: string; value: number; at: string }
 interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
+interface GoalRow { id: string; title: string; level: number; progress: number; color: string; rewarded: boolean; created_at: string; done_at: string | null; position: number }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
 
 // user_id в строках не передаём — в базе стоит default auth.uid(), а RLS не пускает к чужим данным
@@ -48,7 +53,7 @@ export class SupabaseStore implements DataStore {
   constructor(private db: SupabaseClient) {}
 
   async load(): Promise<Snapshot> {
-    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts] = await Promise.all([
+    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions] = await Promise.all([
       this.db.from('profile').select('dragon_name').maybeSingle(),
       this.db.from('life_areas').select('id,key,name,value,position').order('position'),
       this.db.from('skills').select('id,category,name,value,position').order('position'),
@@ -58,6 +63,10 @@ export class SupabaseStore implements DataStore {
       this.db.from('titans').select('id,key,name,value,position').order('position'),
       this.db.from('titan_history').select('id,titan_id,value,at').order('at'),
       this.db.from('workouts').select('id,titan_id,type,result,gain,at').order('at'),
+      this.db.from('goals').select('id,title,level,progress,color,rewarded,created_at,done_at,position').order('position'),
+      this.db.from('credits').select('id,name,total,remaining,position').order('position'),
+      this.db.from('salaries').select('id,name,day,amount').order('day'),
+      this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -82,6 +91,10 @@ export class SupabaseStore implements DataStore {
       skillHistory: rows<SkillHistoryRow>(skillHistory).map((h) => ({ id: h.id, refId: h.skill_id, value: h.value, at: h.at })),
       xpEvents: rows<XpRow>(xp),
       titans: titanList,
+      credits: rows<Credit>(credits),
+      salaries: rows<Salary>(salaries),
+      transactions: rows<Transaction>(transactions),
+      goals: rows<GoalRow>(goals).map((g) => ({ id: g.id, title: g.title, level: g.level, progress: g.progress, color: g.color, rewarded: g.rewarded, createdAt: g.created_at, doneAt: g.done_at, position: g.position })),
       titanHistory: rows<TitanHistoryRow>(titanHistory).map((h) => ({ id: h.id, refId: h.titan_id, value: h.value, at: h.at })),
       workouts: rows<WorkoutRow>(workouts).map((w) => ({ id: w.id, titanId: w.titan_id, type: w.type, result: w.result, gain: w.gain, at: w.at })),
     }
@@ -127,6 +140,38 @@ export class SupabaseStore implements DataStore {
     )
   }
 
+  async saveGoal(g: Goal): Promise<void> {
+    check(await this.db.from('goals').upsert({ id: g.id, title: g.title, level: g.level, progress: g.progress, color: g.color, rewarded: g.rewarded, created_at: g.createdAt, done_at: g.doneAt, position: g.position }))
+  }
+
+  async deleteGoal(id: string): Promise<void> {
+    check(await this.db.from('goals').delete().eq('id', id))
+  }
+
+  async saveCredit(credit: Credit): Promise<void> {
+    check(await this.db.from('credits').upsert(credit))
+  }
+
+  async deleteCredit(id: string): Promise<void> {
+    check(await this.db.from('credits').delete().eq('id', id))
+  }
+
+  async saveSalary(salary: Salary): Promise<void> {
+    check(await this.db.from('salaries').upsert(salary))
+  }
+
+  async deleteSalary(id: string): Promise<void> {
+    check(await this.db.from('salaries').delete().eq('id', id))
+  }
+
+  async addTransaction(transaction: Transaction): Promise<void> {
+    check(await this.db.from('transactions').insert(transaction))
+  }
+
+  async deleteTransaction(id: string): Promise<void> {
+    check(await this.db.from('transactions').delete().eq('id', id))
+  }
+
   async setDragonName(name: string): Promise<void> {
     const { data, error } = await this.db.auth.getUser()
     if (error || !data.user) throw new Error('Нужно войти в аккаунт')
@@ -141,6 +186,10 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('life_areas').delete().neq('id', all))
     // журнал и история титанов удаляются каскадом
     check(await this.db.from('titans').delete().neq('id', all))
+    check(await this.db.from('goals').delete().neq('id', all))
+    check(await this.db.from('credits').delete().neq('id', all))
+    check(await this.db.from('salaries').delete().neq('id', all))
+    check(await this.db.from('transactions').delete().neq('id', all))
 
     if (s.areas.length) check(await this.db.from('life_areas').insert(s.areas))
     if (s.skills.length) check(await this.db.from('skills').insert(s.skills))
@@ -160,6 +209,10 @@ export class SupabaseStore implements DataStore {
     }
     if (s.xpEvents.length) check(await this.db.from('xp_events').insert(s.xpEvents))
     if (s.titans.length) check(await this.db.from('titans').insert(s.titans))
+    if (s.credits.length) check(await this.db.from('credits').insert(s.credits))
+    if (s.salaries.length) check(await this.db.from('salaries').insert(s.salaries))
+    if (s.transactions.length) check(await this.db.from('transactions').insert(s.transactions))
+    if (s.goals.length) check(await this.db.from('goals').insert(s.goals.map((g) => ({ id: g.id, title: g.title, level: g.level, progress: g.progress, color: g.color, rewarded: g.rewarded, created_at: g.createdAt, done_at: g.doneAt, position: g.position }))))
     if (s.titanHistory.length) {
       check(
         await this.db

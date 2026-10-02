@@ -2,11 +2,15 @@ import type { DataStore } from './store'
 import {
   emptySnapshot,
   normalizeSnapshot,
+  type Credit,
+  type Goal,
   type HistoryPoint,
   type LifeArea,
+  type Salary,
   type Skill,
   type Snapshot,
   type Titan,
+  type Transaction,
   type Workout,
   type XpEvent,
 } from './types'
@@ -90,6 +94,58 @@ export class LocalStore implements DataStore {
 
   addWorkout(workout: Workout): Promise<void> {
     return this.mutate((s) => void s.workouts.push(workout))
+  }
+
+  saveGoal(goal: Goal): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.goals.findIndex((x) => x.id === goal.id)
+      if (i >= 0) s.goals[i] = goal
+      else s.goals.push(goal)
+    })
+  }
+
+  deleteGoal(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.goals = s.goals.filter((x) => x.id !== id)
+    })
+  }
+
+  saveCredit(credit: Credit): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.credits.findIndex((x) => x.id === credit.id)
+      if (i >= 0) s.credits[i] = credit
+      else s.credits.push(credit)
+    })
+  }
+
+  deleteCredit(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.credits = s.credits.filter((x) => x.id !== id)
+    })
+  }
+
+  saveSalary(salary: Salary): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.salaries.findIndex((x) => x.id === salary.id)
+      if (i >= 0) s.salaries[i] = salary
+      else s.salaries.push(salary)
+    })
+  }
+
+  deleteSalary(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.salaries = s.salaries.filter((x) => x.id !== id)
+    })
+  }
+
+  addTransaction(transaction: Transaction): Promise<void> {
+    return this.mutate((s) => void s.transactions.push(transaction))
+  }
+
+  deleteTransaction(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.transactions = s.transactions.filter((x) => x.id !== id)
+    })
   }
 
   setDragonName(name: string): Promise<void> {

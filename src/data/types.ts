@@ -1,3 +1,5 @@
+import { GOAL_LEVELS } from '../game/goals'
+
 export type SkillCategory = 'hard' | 'soft' | 'hobby'
 
 export interface Skill {
@@ -43,7 +45,52 @@ export interface Workout {
   at: string
 }
 
-export type XpSource = 'skill' | 'area' | 'deed' | 'titan'
+export interface Credit {
+  id: string
+  name: string
+  /** сколько было взято */
+  total: number
+  /** сколько осталось выплатить */
+  remaining: number
+  position: number
+}
+
+/** Регулярная выплата: приходит каждый месяц в указанное число */
+export interface Salary {
+  id: string
+  name: string
+  day: number
+  amount: number
+}
+
+export interface Transaction {
+  id: string
+  kind: 'income' | 'expense'
+  /** сумма в рублях, всегда положительная */
+  amount: number
+  /** ключ категории из game/treasury.ts */
+  category: string
+  note: string
+  at: string
+}
+
+export interface Goal {
+  id: string
+  title: string
+  /** уровень важности: 0 — звёздный (самый жёсткий) … 4 — речной; см. game/goals.ts */
+  level: number
+  progress: number
+  /** цвет жидкости в сосуде */
+  color: string
+  /** опыт за завершение уже выдан — повторно после возврата из архива не начисляется */
+  rewarded: boolean
+  createdAt: string
+  /** когда завершена; null — цель в работе, иначе в архиве */
+  doneAt: string | null
+  position: number
+}
+
+export type XpSource = 'skill' | 'area' | 'deed' | 'titan' | 'goal'
 
 export interface XpEvent {
   id: string
@@ -68,6 +115,10 @@ export interface Snapshot {
   titans: Titan[]
   titanHistory: HistoryPoint[]
   workouts: Workout[]
+  goals: Goal[]
+  credits: Credit[]
+  salaries: Salary[]
+  transactions: Transaction[]
 }
 
 /** Формат, который пишет scripts/import_excel.py */
@@ -75,6 +126,9 @@ export interface Seed {
   areas: { key: string; name: string; value: number }[]
   skills: { category: SkillCategory; name: string; value: number }[]
   titans?: { key: string; value: number }[]
+  goals?: { title: string; level: number; progress: number }[]
+  credits?: { name: string; total: number; remaining: number }[]
+  salaries?: { name: string; day: number; amount: number }[]
 }
 
 export const DEFAULT_AREAS: { key: string; name: string }[] = [
@@ -112,6 +166,10 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (!Array.isArray(s.titans) || s.titans.length === 0) s.titans = defaultTitans()
   if (!Array.isArray(s.titanHistory)) s.titanHistory = []
   if (!Array.isArray(s.workouts)) s.workouts = []
+  if (!Array.isArray(s.goals)) s.goals = []
+  if (!Array.isArray(s.credits)) s.credits = []
+  if (!Array.isArray(s.salaries)) s.salaries = []
+  if (!Array.isArray(s.transactions)) s.transactions = []
   return s
 }
 
@@ -127,6 +185,10 @@ export function emptySnapshot(): Snapshot {
     titans: defaultTitans(),
     titanHistory: [],
     workouts: [],
+    goals: [],
+    credits: [],
+    salaries: [],
+    transactions: [],
   }
 }
 
@@ -156,6 +218,20 @@ export function snapshotFromSeed(seed: Seed): Snapshot {
     titans,
     titanHistory: titans.map((t) => ({ id: newId(), refId: t.id, value: t.value, at })),
     workouts: [],
+    goals: (seed.goals ?? []).map((g, i) => ({
+      id: newId(),
+      title: g.title,
+      level: g.level,
+      progress: clamp100(g.progress),
+      color: GOAL_LEVELS[g.level]?.color ?? GOAL_LEVELS[3].color,
+      rewarded: false,
+      createdAt: at,
+      doneAt: null,
+      position: i,
+    })),
+    credits: (seed.credits ?? []).map((c, i) => ({ id: newId(), name: c.name, total: c.total, remaining: c.remaining, position: i })),
+    salaries: (seed.salaries ?? []).map((s) => ({ id: newId(), name: s.name, day: s.day, amount: s.amount })),
+    transactions: [],
     areaHistory: areas.map((a) => ({ id: newId(), refId: a.id, value: a.value, at })),
     skillHistory: skills.map((s) => ({ id: newId(), refId: s.id, value: s.value, at })),
     xpEvents: [],

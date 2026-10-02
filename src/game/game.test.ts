@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
+import { daysUntil, expenseShares, monthKey, monthRange, nextPayday, paidPercent, shiftMonth } from './treasury'
 import { areaXp, skillXp, stageProgress, totalXp } from './xp'
 
 describe('rankFor', () => {
@@ -95,5 +96,56 @@ describe('titans', () => {
   it('среднее по титанам округляется, как в Excel', () => {
     expect(averageTitan([25, 45, 30, 10, 20].map((value) => ({ value })))).toBe(26)
     expect(averageTitan([])).toBe(0)
+  })
+})
+
+describe('treasury', () => {
+  it('считает доли расходов и не учитывает доходы', () => {
+    const shares = expenseShares([
+      { kind: 'expense', category: 'food', amount: 6000 },
+      { kind: 'expense', category: 'home', amount: 3000 },
+      { kind: 'expense', category: 'food', amount: 1000 },
+      { kind: 'income', category: 'salary', amount: 99999 },
+    ])
+    expect(shares.map((s) => [s.category.key, s.amount, s.percent])).toEqual([
+      ['food', 7000, 70],
+      ['home', 3000, 30],
+    ])
+    expect(expenseShares([])).toEqual([])
+  })
+
+  it('неизвестная категория уходит в «Прочее»', () => {
+    expect(expenseShares([{ kind: 'expense', category: 'штаны', amount: 5 }])[0].category.key).toBe('other')
+  })
+
+  it('находит ближайшую выплату', () => {
+    expect(nextPayday(5, new Date(2026, 9, 2)).getDate()).toBe(5)
+    expect(nextPayday(5, new Date(2026, 9, 5)).getMonth()).toBe(9)
+    const next = nextPayday(5, new Date(2026, 9, 6))
+    expect([next.getMonth(), next.getDate()]).toEqual([10, 5])
+    // 31-е число в коротком месяце — последний день месяца
+    expect(nextPayday(31, new Date(2026, 1, 10)).getDate()).toBe(28)
+    expect(daysUntil(new Date(2026, 9, 5), new Date(2026, 9, 2, 23, 30))).toBe(3)
+  })
+
+  it('листает месяцы через границу года', () => {
+    expect(monthKey(new Date(2026, 0, 15))).toBe('2026-01')
+    expect(shiftMonth('2026-01', -1)).toBe('2025-12')
+    expect(shiftMonth('2026-12', 1)).toBe('2027-01')
+  })
+
+  it('даёт выбор месяцев с запасом вперёд и захватывает месяцы с записями', () => {
+    const months = monthRange('2026-10', [])
+    expect(months[0]).toBe('2026-07')
+    expect(months[months.length - 1]).toBe('2027-04')
+    expect(months).toContain('2027-01')
+    expect(monthRange('2026-10', ['2025-12', '2027-09'])[0]).toBe('2025-12')
+    expect(monthRange('2026-10', ['2025-12', '2027-09']).slice(-1)[0]).toBe('2027-09')
+  })
+
+  it('считает погашенную часть кредита', () => {
+    expect(paidPercent(290000, 253663)).toBe(13)
+    expect(paidPercent(140000, 0)).toBe(100)
+    expect(paidPercent(0, 0)).toBe(100)
   })
 })

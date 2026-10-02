@@ -3,6 +3,7 @@ import { HashRouter, Route, Routes } from 'react-router-dom'
 import { Atmosphere } from '../components/Atmosphere'
 import { useSession } from '../data/hooks'
 import { cloudEnabled } from '../data/index'
+import { GoalsPage } from '../features/goals/GoalsPage'
 import { HomePage } from '../features/home/HomePage'
 import { LoginPage } from '../features/settings/LoginPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
@@ -10,6 +11,7 @@ import { SkillsPage } from '../features/skills/SkillsPage'
 import { StatsPage } from '../features/stats/StatsPage'
 import { StubPage } from '../features/stubs/StubPage'
 import { TrainingPage } from '../features/training/TrainingPage'
+import { TreasuryPage } from '../features/treasury/TreasuryPage'
 import { Layout } from './Layout'
 
 const queryClient = new QueryClient({
@@ -30,11 +32,8 @@ function Gate() {
           <Route path="stats" element={<StatsPage />} />
           <Route path="training" element={<TrainingPage />} />
           <Route path="spirit" element={<StubPage title="Дух" plan="Техники медитации, их уровень и время практики." />} />
-          <Route path="goals" element={<StubPage title="Цели" plan="Цели с прогрессом и задачи к ним." />} />
-          <Route
-            path="treasury"
-            element={<StubPage title="Казна" plan="Счета, инвестиции, кредиты и бюджет по датам; баланс во времени." />}
-          />
+          <Route path="goals" element={<GoalsPage />} />
+          <Route path="treasury" element={<TreasuryPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<HomePage />} />
         </Route>

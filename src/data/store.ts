@@ -1,4 +1,4 @@
-import type { HistoryPoint, LifeArea, Skill, Snapshot, Titan, Workout, XpEvent } from './types'
+import type { Credit, Goal, HistoryPoint, LifeArea, Skill, Salary, Snapshot, Titan, Transaction, Workout, XpEvent } from './types'
 
 /** Примитивы хранения. Игровая логика (опыт, история) живёт в actions.ts. */
 export interface DataStore {
@@ -12,6 +12,14 @@ export interface DataStore {
   saveTitan(titan: Titan): Promise<void>
   addTitanHistory(point: HistoryPoint): Promise<void>
   addWorkout(workout: Workout): Promise<void>
+  saveGoal(goal: Goal): Promise<void>
+  deleteGoal(id: string): Promise<void>
+  saveCredit(credit: Credit): Promise<void>
+  deleteCredit(id: string): Promise<void>
+  saveSalary(salary: Salary): Promise<void>
+  deleteSalary(id: string): Promise<void>
+  addTransaction(transaction: Transaction): Promise<void>
+  deleteTransaction(id: string): Promise<void>
   setDragonName(name: string): Promise<void>
   /** Полностью заменяет все данные пользователя. */
   replaceAll(snapshot: Snapshot): Promise<void>

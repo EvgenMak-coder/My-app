@@ -1,7 +1,19 @@
+import { levelOf } from '../game/goals'
 import { averageTitan, titanXp } from '../game/titans'
 import { areaXp, skillXp } from '../game/xp'
 import type { DataStore } from './store'
-import { clamp100, newId, type LifeArea, type Skill, type SkillCategory, type Snapshot } from './types'
+import {
+  clamp100,
+  newId,
+  type Credit,
+  type Goal,
+  type LifeArea,
+  type Salary,
+  type Skill,
+  type SkillCategory,
+  type Snapshot,
+  type Transaction,
+} from './types'
 
 const now = (): string => new Date().toISOString()
 
@@ -89,4 +101,87 @@ export async function logWorkout(store: DataStore, snapshot: Snapshot, input: Wo
     await store.saveArea({ ...sport, value: average })
     await store.addAreaHistory({ id: newId(), refId: sport.id, value: average, at })
   }
+}
+
+export async function createGoal(
+  store: DataStore,
+  title: string,
+  level: number,
+  color: string,
+  position: number,
+): Promise<void> {
+  await store.saveGoal({
+    id: newId(),
+    title: title.trim(),
+    level,
+    progress: 0,
+    color,
+    rewarded: false,
+    createdAt: now(),
+    doneAt: null,
+    position,
+  })
+}
+
+export async function changeGoalProgress(store: DataStore, goal: Goal, progress: number): Promise<void> {
+  const value = clamp100(progress)
+  if (value !== goal.progress) await store.saveGoal({ ...goal, progress: value })
+}
+
+/** Цель уходит в архив; опыт за неё даётся один раз, сколько бы её ни возвращали. */
+export async function completeGoal(store: DataStore, goal: Goal): Promise<void> {
+  const at = now()
+  await store.saveGoal({ ...goal, progress: 100, doneAt: at, rewarded: true })
+  if (!goal.rewarded) {
+    const level = levelOf(goal.level)
+    await store.addXp({ id: newId(), source: 'goal', amount: level.reward, note: `Цель (${level.name.toLowerCase()} уровень): ${goal.title}`, at })
+  }
+}
+
+export async function restoreGoal(store: DataStore, goal: Goal): Promise<void> {
+  await store.saveGoal({ ...goal, doneAt: null })
+}
+
+const rubles = (amount: number): number => Math.max(0, Math.round(amount))
+
+export async function addTransaction(store: DataStore, entry: Omit<Transaction, 'id'>): Promise<void> {
+  await store.addTransaction({ ...entry, id: newId(), amount: rubles(entry.amount) })
+}
+
+export async function createSalary(store: DataStore, name: string, day: number, amount: number): Promise<void> {
+  const safeDay = Math.min(31, Math.max(1, Math.round(day) || 1))
+  await store.saveSalary({ id: newId(), name: name.trim(), day: safeDay, amount: rubles(amount) })
+}
+
+/** Выплата пришла: записываем доход сегодняшним числом. */
+export async function receiveSalary(store: DataStore, salary: Salary): Promise<void> {
+  await store.addTransaction({
+    id: newId(),
+    kind: 'income',
+    amount: salary.amount,
+    category: 'salary',
+    note: salary.name,
+    at: now(),
+  })
+}
+
+export async function createCredit(
+  store: DataStore,
+  name: string,
+  total: number,
+  remaining: number,
+  position: number,
+): Promise<void> {
+  await store.saveCredit({
+    id: newId(),
+    name: name.trim(),
+    total: rubles(total),
+    remaining: Math.min(rubles(total), rubles(remaining)),
+    position,
+  })
+}
+
+/** Платёж уменьшает остаток долга; в расходы по категориям он не попадает. */
+export async function payCredit(store: DataStore, credit: Credit, amount: number): Promise<void> {
+  await store.saveCredit({ ...credit, remaining: Math.max(0, credit.remaining - rubles(amount)) })
 }
