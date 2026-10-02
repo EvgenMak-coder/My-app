@@ -1,6 +1,7 @@
+import { averageTitan, titanXp } from '../game/titans'
 import { areaXp, skillXp } from '../game/xp'
 import type { DataStore } from './store'
-import { clamp100, newId, type LifeArea, type Skill, type SkillCategory } from './types'
+import { clamp100, newId, type LifeArea, type Skill, type SkillCategory, type Snapshot } from './types'
 
 const now = (): string => new Date().toISOString()
 
@@ -42,4 +43,50 @@ export async function changeArea(store: DataStore, area: LifeArea, value: number
 
 export async function addDeed(store: DataStore, note: string, amount: number): Promise<void> {
   await store.addXp({ id: newId(), source: 'deed', amount, note: note.trim(), at: now() })
+}
+
+export interface WorkoutInput {
+  titanId: string
+  type: string
+  result: string
+  gain: number
+  /** дата тренировки, ISO */
+  at: string
+}
+
+/** Запись в журнал: поднимает показатель титана, даёт опыт и пересчитывает сферу «Спорт». */
+export async function logWorkout(store: DataStore, snapshot: Snapshot, input: WorkoutInput): Promise<void> {
+  const titan = snapshot.titans.find((t) => t.id === input.titanId)
+  if (!titan) throw new Error('Титан не найден')
+  const value = clamp100(titan.value + Math.max(0, Math.round(input.gain)))
+  const gain = value - titan.value
+
+  await store.addWorkout({
+    id: newId(),
+    titanId: titan.id,
+    type: input.type.trim(),
+    result: input.result.trim(),
+    gain,
+    at: input.at,
+  })
+  if (gain === 0) return
+
+  const at = now()
+  await store.saveTitan({ ...titan, value })
+  await store.addTitanHistory({ id: newId(), refId: titan.id, value, at })
+  await store.addXp({
+    id: newId(),
+    source: 'titan',
+    amount: titanXp(titan.value, value),
+    note: `${titan.name}: ${titan.value} → ${value}`,
+    at,
+  })
+
+  // «Спорт» в Колесе жизни — среднее по титанам; опыт за него отдельно не даём, он уже начислен выше
+  const sport = snapshot.areas.find((a) => a.key === 'sport')
+  const average = averageTitan(snapshot.titans.map((t) => (t.id === titan.id ? { value } : t)))
+  if (sport && sport.value !== average) {
+    await store.saveArea({ ...sport, value: average })
+    await store.addAreaHistory({ id: newId(), refId: sport.id, value: average, at })
+  }
 }

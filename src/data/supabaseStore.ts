@@ -2,12 +2,15 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { DataStore } from './store'
 import {
   DEFAULT_AREAS,
+  defaultTitans,
   newId,
   type HistoryPoint,
   type LifeArea,
   type Skill,
   type SkillCategory,
   type Snapshot,
+  type Titan,
+  type Workout,
   type XpEvent,
   type XpSource,
 } from './types'
@@ -35,6 +38,9 @@ interface SkillRow { id: string; category: SkillCategory; name: string; value: n
 interface AreaRow { id: string; key: string; name: string; value: number; position: number }
 interface SkillHistoryRow { id: string; skill_id: string; value: number; at: string }
 interface AreaHistoryRow { id: string; area_id: string; value: number; at: string }
+interface TitanRow { id: string; key: string; name: string; value: number; position: number }
+interface TitanHistoryRow { id: string; titan_id: string; value: number; at: string }
+interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
 
 // user_id в строках не передаём — в базе стоит default auth.uid(), а RLS не пускает к чужим данным
@@ -42,13 +48,16 @@ export class SupabaseStore implements DataStore {
   constructor(private db: SupabaseClient) {}
 
   async load(): Promise<Snapshot> {
-    const [profile, areas, skills, areaHistory, skillHistory, xp] = await Promise.all([
+    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts] = await Promise.all([
       this.db.from('profile').select('dragon_name').maybeSingle(),
       this.db.from('life_areas').select('id,key,name,value,position').order('position'),
       this.db.from('skills').select('id,category,name,value,position').order('position'),
       this.db.from('life_area_history').select('id,area_id,value,at').order('at'),
       this.db.from('skill_history').select('id,skill_id,value,at').order('at'),
       this.db.from('xp_events').select('id,source,amount,note,at').order('at'),
+      this.db.from('titans').select('id,key,name,value,position').order('position'),
+      this.db.from('titan_history').select('id,titan_id,value,at').order('at'),
+      this.db.from('workouts').select('id,titan_id,type,result,gain,at').order('at'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -56,6 +65,12 @@ export class SupabaseStore implements DataStore {
     if (areaList.length === 0) {
       areaList = DEFAULT_AREAS.map((a, i) => ({ id: newId(), key: a.key, name: a.name, value: 0, position: i }))
       check(await this.db.from('life_areas').insert(areaList))
+    }
+
+    let titanList: Titan[] = rows<TitanRow>(titans)
+    if (titanList.length === 0) {
+      titanList = defaultTitans()
+      check(await this.db.from('titans').insert(titanList))
     }
 
     return {
@@ -66,6 +81,9 @@ export class SupabaseStore implements DataStore {
       areaHistory: rows<AreaHistoryRow>(areaHistory).map((h) => ({ id: h.id, refId: h.area_id, value: h.value, at: h.at })),
       skillHistory: rows<SkillHistoryRow>(skillHistory).map((h) => ({ id: h.id, refId: h.skill_id, value: h.value, at: h.at })),
       xpEvents: rows<XpRow>(xp),
+      titans: titanList,
+      titanHistory: rows<TitanHistoryRow>(titanHistory).map((h) => ({ id: h.id, refId: h.titan_id, value: h.value, at: h.at })),
+      workouts: rows<WorkoutRow>(workouts).map((w) => ({ id: w.id, titanId: w.titan_id, type: w.type, result: w.result, gain: w.gain, at: w.at })),
     }
   }
 
@@ -93,6 +111,22 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('xp_events').insert(e))
   }
 
+  async saveTitan(titan: Titan): Promise<void> {
+    check(await this.db.from('titans').upsert(titan))
+  }
+
+  async addTitanHistory(p: HistoryPoint): Promise<void> {
+    check(await this.db.from('titan_history').insert({ id: p.id, titan_id: p.refId, value: p.value, at: p.at }))
+  }
+
+  async addWorkout(w: Workout): Promise<void> {
+    check(
+      await this.db
+        .from('workouts')
+        .insert({ id: w.id, titan_id: w.titanId, type: w.type, result: w.result, gain: w.gain, at: w.at }),
+    )
+  }
+
   async setDragonName(name: string): Promise<void> {
     const { data, error } = await this.db.auth.getUser()
     if (error || !data.user) throw new Error('Нужно войти в аккаунт')
@@ -105,6 +139,8 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('xp_events').delete().neq('id', all))
     check(await this.db.from('skills').delete().neq('id', all))
     check(await this.db.from('life_areas').delete().neq('id', all))
+    // журнал и история титанов удаляются каскадом
+    check(await this.db.from('titans').delete().neq('id', all))
 
     if (s.areas.length) check(await this.db.from('life_areas').insert(s.areas))
     if (s.skills.length) check(await this.db.from('skills').insert(s.skills))
@@ -123,6 +159,21 @@ export class SupabaseStore implements DataStore {
       )
     }
     if (s.xpEvents.length) check(await this.db.from('xp_events').insert(s.xpEvents))
+    if (s.titans.length) check(await this.db.from('titans').insert(s.titans))
+    if (s.titanHistory.length) {
+      check(
+        await this.db
+          .from('titan_history')
+          .insert(s.titanHistory.map((p) => ({ id: p.id, titan_id: p.refId, value: p.value, at: p.at }))),
+      )
+    }
+    if (s.workouts.length) {
+      check(
+        await this.db
+          .from('workouts')
+          .insert(s.workouts.map((w) => ({ id: w.id, titan_id: w.titanId, type: w.type, result: w.result, gain: w.gain, at: w.at }))),
+      )
+    }
     await this.setDragonName(s.profile.dragonName)
   }
 }

@@ -1,7 +1,6 @@
 import { lerp, prefersReducedMotion, rand, rgba, type Palette } from './util'
 
-/** Логический размер сцены; на экране холст масштабируется под контейнер. */
-const W = 360
+/** Логическая высота сцены; ширина подстраивается под холст, чтобы дракону было где развернуться. */
 const H = 300
 const INK = '#121016'
 const INK_DEEP = '#08070a'
@@ -57,6 +56,7 @@ interface Spark { x: number; y: number; vx: number; vy: number; life: number; ma
 export class DragonScene {
   private ctx: CanvasRenderingContext2D
   private scale = 1
+  private w = 360
   private raf = 0
   private last = 0
   private t = rand(0, 20)
@@ -110,11 +110,13 @@ export class DragonScene {
 
   resize(): void {
     const width = this.canvas.clientWidth
-    if (!width) return
+    const height = this.canvas.clientHeight
+    if (!width || !height) return
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     this.canvas.width = Math.round(width * dpr)
-    this.canvas.height = Math.round(((width * H) / W) * dpr)
-    this.scale = this.canvas.width / W
+    this.canvas.height = Math.round(height * dpr)
+    this.scale = this.canvas.height / H
+    this.w = this.canvas.width / this.scale
     if (prefersReducedMotion()) this.drawStill()
   }
 
@@ -151,11 +153,12 @@ export class DragonScene {
     this.draw()
   }
 
-  /** Траектория головы: плавная «восьмёрка» внутри круга. */
+  /** Траектория головы: плавная «восьмёрка» на всю ширину поля. */
   private path(t: number): Vec {
+    const reach = Math.max(60, this.w / 2 - 90)
     return {
-      x: W / 2 + Math.sin(t * 0.5) * 104 + Math.sin(t * 1.27 + 1) * 20,
-      y: H / 2 + Math.sin(t + 0.4) * 66 + Math.cos(t * 0.63) * 18,
+      x: this.w / 2 + Math.sin(t * 0.5) * reach * 0.84 + Math.sin(t * 1.27 + 1) * reach * 0.16,
+      y: H / 2 + Math.sin(t + 0.4) * 76 + Math.cos(t * 0.63) * 20,
     }
   }
 
@@ -197,38 +200,26 @@ export class DragonScene {
   private draw(): void {
     const c = this.ctx
     c.setTransform(this.scale, 0, 0, this.scale, 0, 0)
-    c.clearRect(0, 0, W, H)
+    c.clearRect(0, 0, this.w, H)
     c.lineCap = 'round'
     c.lineJoin = 'round'
-    this.drawEnso()
+    this.drawHalo()
     if (this.level === 0) this.drawEgg()
     else this.drawDragon()
   }
 
-  /** Энсо — незамкнутый круг кистью; за ним мягкий отсвет, чтобы тёмное тело читалось. */
-  private drawEnso(): void {
+  /** Мягкий отсвет за драконом — без него тёмное тело теряется на тёмном фоне. Летит вместе с ним. */
+  private drawHalo(): void {
     const c = this.ctx
-    const P = this.palette
-    const halo = c.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, 150)
-    halo.addColorStop(0, rgba(P.accent, 0.2))
-    halo.addColorStop(1, rgba(P.accent, 0))
+    const mid = this.chain[Math.floor(this.chain.length / 3)] ?? { x: this.w / 2, y: H / 2 }
+    const size = 70 + this.radius * 4
+    const halo = c.createRadialGradient(mid.x, mid.y, 6, mid.x, mid.y, size)
+    // быстро гаснет к краю, чтобы отсвет не обрезался границей холста
+    halo.addColorStop(0, rgba(this.palette.accent, 0.2))
+    halo.addColorStop(0.5, rgba(this.palette.accent, 0.05))
+    halo.addColorStop(1, rgba(this.palette.accent, 0))
     c.fillStyle = halo
-    c.fillRect(0, 0, W, H)
-
-    const start = -1.9 + Math.sin(this.t * 0.2) * 0.06
-    c.shadowColor = P.accent
-    c.shadowBlur = 18
-    c.strokeStyle = P.accent
-    c.lineWidth = 4.5
-    c.beginPath()
-    c.arc(W / 2, H / 2, 128, start, start + 5.35)
-    c.stroke()
-    c.shadowBlur = 0
-    c.strokeStyle = rgba(P.bright, 0.55)
-    c.lineWidth = 1
-    c.beginPath()
-    c.arc(W / 2, H / 2, 121, start + 0.5, start + 3.9)
-    c.stroke()
+    c.fillRect(mid.x - size, mid.y - size, size * 2, size * 2)
   }
 
   private drawEgg(): void {
@@ -240,7 +231,7 @@ export class DragonScene {
     const tilt = Math.sin(this.t * 1.1) * 0.035 + (shaking ? Math.sin(this.t * 22) * 0.02 : 0)
 
     c.save()
-    c.translate(W / 2, H / 2 + 84)
+    c.translate(this.w / 2, H / 2 + 84)
     c.rotate(tilt)
     c.scale(1.45, 1.45)
     c.translate(0, -58)

@@ -1,5 +1,15 @@
 import type { DataStore } from './store'
-import { emptySnapshot, type HistoryPoint, type LifeArea, type Skill, type Snapshot, type XpEvent } from './types'
+import {
+  emptySnapshot,
+  normalizeSnapshot,
+  type HistoryPoint,
+  type LifeArea,
+  type Skill,
+  type Snapshot,
+  type Titan,
+  type Workout,
+  type XpEvent,
+} from './types'
 
 const KEY = 'heavenly-dragon:v1'
 
@@ -7,7 +17,7 @@ export class LocalStore implements DataStore {
   private read(): Snapshot {
     try {
       const raw = localStorage.getItem(KEY)
-      if (raw) return JSON.parse(raw) as Snapshot
+      if (raw) return normalizeSnapshot(JSON.parse(raw) as Snapshot)
     } catch {
       // повреждённые данные — начинаем с чистого листа
     }
@@ -64,6 +74,22 @@ export class LocalStore implements DataStore {
 
   addXp(event: XpEvent): Promise<void> {
     return this.mutate((s) => void s.xpEvents.push(event))
+  }
+
+  saveTitan(titan: Titan): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.titans.findIndex((x) => x.id === titan.id)
+      if (i >= 0) s.titans[i] = titan
+      else s.titans.push(titan)
+    })
+  }
+
+  addTitanHistory(point: HistoryPoint): Promise<void> {
+    return this.mutate((s) => void s.titanHistory.push(point))
+  }
+
+  addWorkout(workout: Workout): Promise<void> {
+    return this.mutate((s) => void s.workouts.push(workout))
   }
 
   setDragonName(name: string): Promise<void> {

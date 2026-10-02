@@ -9,6 +9,7 @@ import { SettingsPage } from '../features/settings/SettingsPage'
 import { SkillsPage } from '../features/skills/SkillsPage'
 import { StatsPage } from '../features/stats/StatsPage'
 import { StubPage } from '../features/stubs/StubPage'
+import { TrainingPage } from '../features/training/TrainingPage'
 import { Layout } from './Layout'
 
 const queryClient = new QueryClient({
@@ -27,10 +28,7 @@ function Gate() {
           <Route index element={<HomePage />} />
           <Route path="skills" element={<SkillsPage />} />
           <Route path="stats" element={<StatsPage />} />
-          <Route
-            path="training"
-            element={<StubPage title="Тренировки" plan="Сила, ловкость, выносливость, взрыв, растяжка и журнал тренировок." />}
-          />
+          <Route path="training" element={<TrainingPage />} />
           <Route path="spirit" element={<StubPage title="Дух" plan="Техники медитации, их уровень и время практики." />} />
           <Route path="goals" element={<StubPage title="Цели" plan="Цели с прогрессом и задачи к ним." />} />
           <Route

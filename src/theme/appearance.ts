@@ -17,26 +17,43 @@ export function paletteOf(key: ElementKey): { accent: string; bright: string; de
   return { accent: el.color, bright: el.bright, deep: el.deep }
 }
 
+/** Насколько бурно ведёт себя фон; power — множитель для эффектов из fx/effects.ts */
+export const INTENSITIES = [
+  { key: 'off', name: 'Выкл', power: 0 },
+  { key: 'calm', name: 'Спокойно', power: 0.55 },
+  { key: 'normal', name: 'Обычно', power: 1 },
+  { key: 'wild', name: 'Буйство', power: 1.8 },
+] as const
+
+export type IntensityKey = (typeof INTENSITIES)[number]['key']
+
+export const powerOf = (key: IntensityKey): number => INTENSITIES.find((i) => i.key === key)?.power ?? 1
+
 export interface Appearance {
   element: ElementKey
+  intensity: IntensityKey
   /** своя картинка фона (data URL) или null */
   background: string | null
 }
 
 const ELEMENT_KEY = 'heavenly-dragon:element'
 const BACKGROUND_KEY = 'heavenly-dragon:background'
+const INTENSITY_KEY = 'heavenly-dragon:intensity'
 
 function read(): Appearance {
   let element: ElementKey = 'ember'
   let background: string | null = null
+  let intensity: IntensityKey = 'normal'
   try {
+    const level = localStorage.getItem(INTENSITY_KEY)
+    if (INTENSITIES.some((i) => i.key === level)) intensity = level as IntensityKey
     const saved = localStorage.getItem(ELEMENT_KEY)
     if (ELEMENTS.some((e) => e.key === saved)) element = saved as ElementKey
     background = localStorage.getItem(BACKGROUND_KEY)
   } catch {
     // хранилище недоступно — остаёмся на значениях по умолчанию
   }
-  return { element, background }
+  return { element, intensity, background }
 }
 
 let current = read()
@@ -59,6 +76,15 @@ export function setElement(element: ElementKey): void {
     // выбор подействует до перезагрузки
   }
   apply({ ...current, element })
+}
+
+export function setIntensity(intensity: IntensityKey): void {
+  try {
+    localStorage.setItem(INTENSITY_KEY, intensity)
+  } catch {
+    // выбор подействует до перезагрузки
+  }
+  apply({ ...current, intensity })
 }
 
 /** Бросает ошибку, если картинка не поместилась в хранилище. */

@@ -12,6 +12,8 @@ dev-dist/
 # чужие картинки-референсы: в публичный репозиторий не выкладываем
 backgroud/
 lifestyle/
+public/titans/*
+!public/titans/README.md
 
 .DS_Store
 Thumbs.db

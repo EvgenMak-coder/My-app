@@ -9,7 +9,7 @@ import { STAGES, stageProgress, totalXp } from '../../game/xp'
 
 const DEED_REWARDS = [10, 25, 50, 100]
 
-function AreaRow({ area }: { area: LifeArea }) {
+function AreaRow({ area, locked = false }: { area: LifeArea; locked?: boolean }) {
   const [value, setValue] = useState(area.value)
   const change = useAction((store, v: number) => changeArea(store, area, v))
 
@@ -22,7 +22,10 @@ function AreaRow({ area }: { area: LifeArea }) {
   return (
     <li>
       <div className="row">
-        <span className="grow">{area.name}</span>
+        <span className="grow">
+          {area.name}
+          {locked && <small className="muted"> · по титанам</small>}
+        </span>
         <span className="num">{value}</span>
       </div>
       <input
@@ -31,6 +34,7 @@ function AreaRow({ area }: { area: LifeArea }) {
         max={100}
         value={value}
         aria-label={area.name}
+        disabled={locked}
         onChange={(e) => setValue(Number(e.target.value))}
         onPointerUp={commit}
         onKeyUp={commit}
@@ -85,8 +89,7 @@ function Home({ snapshot }: { snapshot: Snapshot }) {
 
   return (
     <>
-      <div className="grid-2">
-        <Panel className="hero">
+      <section className="hero">
           <span className="kanji" aria-hidden="true">
             天龍之道
           </span>
@@ -100,7 +103,7 @@ function Home({ snapshot }: { snapshot: Snapshot }) {
             {previewing ? 'Облик стадии' : 'Стадия'} {shown + 1} из {STAGES.length} · {STAGES[shown].name}
           </p>
           <p className="muted">{STAGES[shown].note}</p>
-          <div style={{ width: '100%' }}>
+          <div style={{ width: 'min(100%, 520px)' }}>
             <Bar value={progress.ratio * 100} gold />
           </div>
           <p className="muted num">
@@ -108,12 +111,7 @@ function Home({ snapshot }: { snapshot: Snapshot }) {
               ? `${xp} / ${progress.next.from} ци — до стадии «${progress.next.name}»`
               : `${xp} ци — вершина пути`}
           </p>
-        </Panel>
-
-        <Panel title="Колесо жизни">
-          <RadarWheel areas={snapshot.areas} />
-        </Panel>
-      </div>
+      </section>
 
       <Panel title="Путь дракона">
         <p className="muted">Нажми на стадию, чтобы увидеть её облик. Дракон подрастает и внутри стадии.</p>
@@ -137,16 +135,7 @@ function Home({ snapshot }: { snapshot: Snapshot }) {
         </ol>
       </Panel>
 
-      <div className="grid-2">
-        <Panel title="Сферы">
-          <ul className="list">
-            {snapshot.areas.map((a) => (
-              <AreaRow key={a.id} area={a} />
-            ))}
-          </ul>
-        </Panel>
-
-        <Panel title="Деяния">
+      <Panel title="Деяния">
           <DeedForm />
           {recent.length === 0 ? (
             <p className="muted">Пока пусто. Опыт (ци) приходит за рост навыков, сфер и записанные деяния.</p>
@@ -161,8 +150,16 @@ function Home({ snapshot }: { snapshot: Snapshot }) {
               ))}
             </ul>
           )}
-        </Panel>
-      </div>
+      </Panel>
+
+      <Panel title="Колесо жизни" className="wheel">
+        <RadarWheel areas={snapshot.areas} />
+        <ul className="list">
+          {snapshot.areas.map((a) => (
+            <AreaRow key={a.id} area={a} locked={a.key === 'sport'} />
+          ))}
+        </ul>
+      </Panel>
     </>
   )
 }

@@ -1,5 +1,13 @@
 import { useEffect, useState, type ChangeEvent, type CSSProperties } from 'react'
-import { ELEMENTS, imageToDataUrl, setBackground, setElement, useAppearance } from '../../theme/appearance'
+import {
+  ELEMENTS,
+  INTENSITIES,
+  imageToDataUrl,
+  setBackground,
+  setElement,
+  setIntensity,
+  useAppearance,
+} from '../../theme/appearance'
 import { DataGate, Panel } from '../../components/ui'
 import { useAction } from '../../data/hooks'
 import { cloudEnabled, supabase } from '../../data/index'
@@ -16,7 +24,7 @@ function download(snapshot: Snapshot) {
 }
 
 function AppearancePanel() {
-  const { element, background } = useAppearance()
+  const { element, intensity, background } = useAppearance()
   const [message, setMessage] = useState('')
 
   const onImage = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -43,6 +51,14 @@ function AppearancePanel() {
           >
             <span className="swatch" />
             {el.name}
+          </button>
+        ))}
+      </div>
+      <p className="muted">Интенсивность анимации фона</p>
+      <div className="tabs">
+        {INTENSITIES.map((level) => (
+          <button key={level.key} aria-selected={level.key === intensity} onClick={() => setIntensity(level.key)}>
+            {level.name}
           </button>
         ))}
       </div>

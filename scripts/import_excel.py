@@ -20,6 +20,14 @@ AREA_KEYS = {
     "счастье": "happiness",
 }
 
+TITAN_KEYS = {
+    "силовая": "strength",
+    "ловкость": "agility",
+    "выносливость": "endurance",
+    "взрыв вын": "burst",
+    "растяжка": "flexibility",
+}
+
 # лист «Навыки»: (колонка названия, колонка значения, категория)
 SKILL_COLUMNS = [(1, 2, "hard"), (5, 6, "soft"), (9, 10, "hobby")]
 
@@ -46,6 +54,17 @@ def read_areas(ws):
     return areas
 
 
+def read_titans(ws):
+    titans = []
+    for col in range(1, ws.max_column + 1):
+        name = ws.cell(row=1, column=col).value
+        if not isinstance(name, str) or name.strip().lower() not in TITAN_KEYS:
+            continue
+        value = to_number(ws.cell(row=2, column=col).value)
+        titans.append({"key": TITAN_KEYS[name.strip().lower()], "value": round(min(100, max(0, value or 0)))})
+    return titans
+
+
 def read_skills(ws):
     skills = []
     for name_col, value_col, category in SKILL_COLUMNS:
@@ -66,13 +85,17 @@ def main():
 
     # data_only: берём посчитанные значения формул, а не сами формулы
     wb = load_workbook(source, data_only=True)
-    seed = {"areas": read_areas(wb["Колесо жизни"]), "skills": read_skills(wb["Навыки"])}
+    seed = {
+        "areas": read_areas(wb["Колесо жизни"]),
+        "skills": read_skills(wb["Навыки"]),
+        "titans": read_titans(wb["Тренировки"]),
+    }
     target.write_text(json.dumps(seed, ensure_ascii=False, indent=2), encoding="utf-8")
 
     by_category = {}
     for s in seed["skills"]:
         by_category[s["category"]] = by_category.get(s["category"], 0) + 1
-    print(f"Сфер: {len(seed['areas'])}, навыков: {len(seed['skills'])} {by_category}")
+    print(f"Сфер: {len(seed['areas'])}, навыков: {len(seed['skills'])} {by_category}, титанов: {len(seed['titans'])}")
     print(f"Записано в {target}")
 
 

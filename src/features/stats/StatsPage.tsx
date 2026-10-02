@@ -36,6 +36,7 @@ const byTime = (a: { at: string }, b: { at: string }) => a.at.localeCompare(b.at
 function Stats({ snapshot }: { snapshot: Snapshot }) {
   const targets = [
     ...snapshot.areas.map((a) => ({ id: a.id, label: `Сфера: ${a.name}`, history: snapshot.areaHistory })),
+    ...snapshot.titans.map((t) => ({ id: t.id, label: `Титан: ${t.name}`, history: snapshot.titanHistory })),
     ...[...snapshot.skills]
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
       .map((s) => ({ id: s.id, label: s.name, history: snapshot.skillHistory })),

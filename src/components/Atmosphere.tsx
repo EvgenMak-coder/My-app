@@ -1,22 +1,23 @@
 import { useEffect, useRef } from 'react'
 import { EFFECTS } from '../fx/effects'
 import { prefersReducedMotion } from '../fx/util'
-import { paletteOf, useAppearance } from '../theme/appearance'
+import { paletteOf, powerOf, useAppearance } from '../theme/appearance'
 
 /** Неподвижный слой за всем приложением: свечение стихии, своя картинка и её эффект. */
 export function Atmosphere() {
-  const { element, background } = useAppearance()
+  const { element, intensity, background } = useAppearance()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    if (prefersReducedMotion()) {
+    const power = powerOf(intensity)
+    if (power === 0 || prefersReducedMotion()) {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       return
     }
 
-    const effect = EFFECTS[element](paletteOf(element))
+    const effect = EFFECTS[element](paletteOf(element), power)
     // на телефонах с плотным экраном полного разрешения для дыма и огня не нужно
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
     let width = 0
@@ -47,7 +48,7 @@ export function Atmosphere() {
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
     }
-  }, [element])
+  }, [element, intensity])
 
   return (
     <div className="atmo" aria-hidden="true">

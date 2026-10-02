@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rankFor } from './ranks'
+import { averageTitan, materialProgress, titanXp } from './titans'
 import { areaXp, skillXp, stageProgress, totalXp } from './xp'
 
 describe('rankFor', () => {
@@ -60,5 +61,39 @@ describe('stageProgress', () => {
     const p = stageProgress(99999)
     expect(p.next).toBeNull()
     expect(p.ratio).toBe(1)
+  })
+})
+
+describe('materialProgress', () => {
+  it.each([
+    [0, 'wood'],
+    [19, 'wood'],
+    [20, 'bronze'],
+    [39, 'bronze'],
+    [40, 'silver'],
+    [60, 'gold'],
+    [79, 'gold'],
+    [80, 'jade'],
+    [100, 'jade'],
+  ])('%i → %s', (value, key) => {
+    expect(materialProgress(value).material.key).toBe(key)
+  })
+
+  it('считает остаток до следующего материала', () => {
+    expect(materialProgress(45).left).toBe(15)
+    expect(materialProgress(45).next?.key).toBe('gold')
+    expect(materialProgress(90).next).toBeNull()
+  })
+})
+
+describe('titans', () => {
+  it('опыт только за рост', () => {
+    expect(titanXp(25, 27)).toBe(20)
+    expect(titanXp(27, 25)).toBe(0)
+  })
+
+  it('среднее по титанам округляется, как в Excel', () => {
+    expect(averageTitan([25, 45, 30, 10, 20].map((value) => ({ value })))).toBe(26)
+    expect(averageTitan([])).toBe(0)
   })
 })
