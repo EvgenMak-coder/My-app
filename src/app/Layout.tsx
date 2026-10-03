@@ -3,12 +3,11 @@ import { APP_VERSION } from '../pwa'
 
 const LINKS = [
   { to: '/', glyph: '龍', label: 'Главная' },
+  { to: '/treasury', glyph: '財', label: 'Казна' },
+  { to: '/training', glyph: '武', label: 'Тренировки' },
+  { to: '/goals', glyph: '志', label: 'Цели' },
   { to: '/skills', glyph: '技', label: 'Навыки' },
   { to: '/stats', glyph: '鑑', label: 'Статистика' },
-  { to: '/training', glyph: '武', label: 'Тренировки' },
-  { to: '/spirit', glyph: '心', label: 'Дух' },
-  { to: '/goals', glyph: '志', label: 'Цели' },
-  { to: '/treasury', glyph: '財', label: 'Казна' },
   { to: '/settings', glyph: '設', label: 'Настройки' },
 ]
 

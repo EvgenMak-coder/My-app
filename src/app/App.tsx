@@ -9,7 +9,6 @@ import { LoginPage } from '../features/settings/LoginPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
 import { SkillsPage } from '../features/skills/SkillsPage'
 import { StatsPage } from '../features/stats/StatsPage'
-import { StubPage } from '../features/stubs/StubPage'
 import { TrainingPage } from '../features/training/TrainingPage'
 import { TreasuryPage } from '../features/treasury/TreasuryPage'
 import { Layout } from './Layout'
@@ -28,12 +27,11 @@ function Gate() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<HomePage />} />
+          <Route path="treasury" element={<TreasuryPage />} />
+          <Route path="training" element={<TrainingPage />} />
+          <Route path="goals" element={<GoalsPage />} />
           <Route path="skills" element={<SkillsPage />} />
           <Route path="stats" element={<StatsPage />} />
-          <Route path="training" element={<TrainingPage />} />
-          <Route path="spirit" element={<StubPage title="Дух" plan="Техники медитации, их уровень и время практики." />} />
-          <Route path="goals" element={<GoalsPage />} />
-          <Route path="treasury" element={<TreasuryPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<HomePage />} />
         </Route>
