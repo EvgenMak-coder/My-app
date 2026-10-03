@@ -688,92 +688,136 @@ input[type='range'] {
 
 /* ---------- тренировки: титаны ---------- */
 
-/* цвет материала; им красятся рамка, подпись и шкала карточки */
+/* цвет материала; им красятся рамка, подпись и шкала выбранного титана */
 .wood { --mat: #a9713f; --mat-bright: #d8a36c; }
 .bronze { --mat: #cd7f32; --mat-bright: #f0b072; }
 .silver { --mat: #b9c0c9; --mat-bright: #f2f5f8; }
 .gold { --mat: #e6b422; --mat-bright: #ffe38a; }
 .jade { --mat: #2fae7a; --mat-bright: #8ff0c2; }
 
-.titans {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--gap);
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-}
-
-.titan {
+/* витрина: статуэтки по кругу, под ними — данные выбранной */
+.titan-stage {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+.carousel {
+  position: relative;
+  height: clamp(320px, 52vh, 520px);
+}
+
+.carousel canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* вертикальная прокрутка страницы остаётся, горизонтальный жест листает круг */
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.carousel canvas:active {
+  cursor: grabbing;
+}
+
+.carousel canvas.hidden {
+  display: none;
+}
+
+.carousel.loading,
+.carousel-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  height: 100%;
+}
+
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  padding: 0;
+  font-size: 2rem;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--accent-bright);
+}
+
+.carousel-arrow.prev {
+  left: 0;
+}
+
+.carousel-arrow.next {
+  right: 0;
+}
+
+.carousel-hint {
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.titan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(100%, 460px);
+  margin: 0 auto;
+  padding: 14px;
   background: var(--surface);
   backdrop-filter: blur(6px);
   border: 1px solid color-mix(in srgb, var(--mat) 55%, transparent);
   border-radius: var(--radius);
-  overflow: hidden;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 18px color-mix(in srgb, var(--mat) 22%, transparent);
+  text-align: center;
 }
 
-.titan-art {
-  position: relative;
-  aspect-ratio: 3 / 4;
-  background: #050406;
-  overflow: hidden;
-}
-
-.titan-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  display: block;
-}
-
-/* базовая картинка перекрашивается под материал */
-.wood .titan-art.tinted img { filter: grayscale(1) sepia(0.9) saturate(1.5) hue-rotate(-12deg) brightness(0.72) contrast(1.1); }
-.bronze .titan-art.tinted img { filter: grayscale(1) sepia(1) saturate(2.3) hue-rotate(-18deg) brightness(0.86) contrast(1.15); }
-.silver .titan-art.tinted img { filter: grayscale(1) brightness(1.08) contrast(1.25); }
-.gold .titan-art.tinted img { filter: grayscale(1) sepia(1) saturate(3.2) hue-rotate(2deg) brightness(1.08) contrast(1.15); }
-.jade .titan-art.tinted img { filter: grayscale(1) sepia(1) saturate(2.6) hue-rotate(85deg) brightness(0.95) contrast(1.15); }
-
-/* затемнение к низу и блик металла поверх картинки */
-.titan-art::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(115deg, transparent 38%, color-mix(in srgb, var(--mat-bright) 22%, transparent) 50%, transparent 62%),
-    linear-gradient(180deg, transparent 55%, rgba(7, 6, 8, 0.9));
-  pointer-events: none;
-}
-
-.titan-art.empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--mat) 28%, transparent), #050406 70%);
-}
-
-.titan-art.empty span {
-  font-size: 5rem;
-  color: var(--mat-bright);
-  text-shadow: 0 0 24px var(--mat);
-  opacity: 0.85;
-}
-
-.titan-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-}
-
-.titan h3 {
-  font-size: 1.15rem;
-  letter-spacing: 0.14em;
+.titan-info h2 {
+  letter-spacing: 0.16em;
   color: var(--mat-bright);
   text-shadow: 0 0 12px color-mix(in srgb, var(--mat) 70%, transparent);
+}
+
+/* быстрый выбор: пять титанов в ряд, выбранный подсвечен своим материалом */
+.titan-picker {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  width: min(100%, 460px);
+  margin: 0 auto;
+}
+
+.titan-picker button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  min-width: 0;
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-dim);
+}
+
+.titan-picker button span {
+  font-size: 1.25rem;
+  color: var(--mat-bright);
+}
+
+.titan-picker button small {
+  font-size: 0.62rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titan-picker button[aria-selected='true'] {
+  border-color: var(--mat);
+  color: var(--text);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mat) 45%, transparent);
 }
 
 .titan-material {
@@ -793,7 +837,7 @@ input[type='range'] {
   font-variant-numeric: lining-nums tabular-nums;
 }
 
-.titan .bar > span {
+.titan-info .bar > span {
   background: linear-gradient(90deg, var(--mat), var(--mat-bright));
   box-shadow: 0 0 10px color-mix(in srgb, var(--mat) 70%, transparent);
 }
@@ -829,6 +873,14 @@ input[type='range'] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.workout-form .wide {
+  grid-column: 1 / -1;
+}
+
+.workout-target b {
+  color: var(--accent-bright);
 }
 
 .workout-form input,

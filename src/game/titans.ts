@@ -36,13 +36,12 @@ export function materialProgress(value: number): MaterialProgress {
 export const titanXp = (oldValue: number, newValue: number): number =>
   Math.max(0, newValue - oldValue) * XP_PER_TITAN_POINT
 
-/** Кто воплощает показатель. Картинки лежат в public/titans/<key>.jpg — см. README там же. */
-export const TITAN_HEROES: Record<string, { hero: string; title: string; glyph: string; focus?: string }> = {
-  strength: { hero: 'Рагнар', title: 'Викинг', glyph: '力' },
-  agility: { hero: 'Зоро', title: 'Самурай', glyph: '迅' },
-  endurance: { hero: 'Спартак', title: 'Гладиатор', glyph: '耐' },
-  // focus — какая часть картинки остаётся в кадре карточки (CSS object-position)
-  burst: { hero: 'Тодзи', title: 'Охотник', glyph: '爆', focus: 'center 70%' },
+/** Кто воплощает показатель. Объёмные статуэтки собирает fx/statues.ts по тому же ключу. */
+export const TITAN_HEROES: Record<string, { hero: string; title: string; glyph: string }> = {
+  strength: { hero: 'Викинг', title: 'Секира и щит', glyph: '力' },
+  agility: { hero: 'Зоро', title: 'Самурай трёх мечей', glyph: '迅' },
+  endurance: { hero: 'Спартанец', title: 'Гоплит', glyph: '耐' },
+  burst: { hero: 'Тодзи', title: 'Охотник', glyph: '爆' },
   flexibility: { hero: 'Алукард', title: 'Вампир', glyph: '柔' },
 }
 
