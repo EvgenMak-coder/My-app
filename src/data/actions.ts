@@ -1,5 +1,6 @@
 import { levelOf } from '../game/goals'
 import { averageTitan, titanXp } from '../game/titans'
+import { chargeDate, dayKey, monthKey } from '../game/treasury'
 import { areaXp, skillXp } from '../game/xp'
 import type { DataStore } from './store'
 import {
@@ -12,6 +13,7 @@ import {
   type Skill,
   type SkillCategory,
   type Snapshot,
+  type Subscription,
   type Transaction,
 } from './types'
 
@@ -148,9 +150,10 @@ export async function addTransaction(store: DataStore, entry: Omit<Transaction, 
   await store.addTransaction({ ...entry, id: newId(), amount: rubles(entry.amount) })
 }
 
+const dayOfMonth = (day: number): number => Math.min(31, Math.max(1, Math.round(day) || 1))
+
 export async function createSalary(store: DataStore, name: string, day: number, amount: number): Promise<void> {
-  const safeDay = Math.min(31, Math.max(1, Math.round(day) || 1))
-  await store.saveSalary({ id: newId(), name: name.trim(), day: safeDay, amount: rubles(amount) })
+  await store.saveSalary({ id: newId(), name: name.trim(), day: dayOfMonth(day), amount: rubles(amount) })
 }
 
 /** Выплата пришла: записываем доход сегодняшним числом. */
@@ -202,4 +205,67 @@ export async function updateCredit(
 ): Promise<void> {
   const owed = rubles(remaining)
   await store.saveCredit({ ...credit, name: name.trim(), remaining: owed, total: Math.max(rubles(total), owed) })
+}
+
+export interface SubscriptionInput {
+  name: string
+  amount: number
+  day: number
+  category: string
+}
+
+const monthStart = (date: Date): string => `${monthKey(date)}-01`
+
+/** Подписка считается с начала текущего месяца: если её число уже прошло, списание этого месяца учтено. */
+export async function createSubscription(store: DataStore, input: SubscriptionInput, today = new Date()): Promise<void> {
+  await store.saveSubscription({
+    id: newId(),
+    name: input.name.trim(),
+    amount: rubles(input.amount),
+    day: dayOfMonth(input.day),
+    category: input.category,
+    startedAt: monthStart(today),
+    endedAt: null,
+  })
+}
+
+/**
+ * Правка подписки. Новая цена действует с текущего месяца: если подписка тянется из прошлых месяцев,
+ * старая запись закрывается их последним днём и уходит в архив, а дальше считается новая — прошлое не пересчитывается.
+ */
+export async function updateSubscription(
+  store: DataStore,
+  sub: Subscription,
+  input: SubscriptionInput,
+  today = new Date(),
+): Promise<void> {
+  const next: Subscription = {
+    ...sub,
+    name: input.name.trim(),
+    amount: rubles(input.amount),
+    day: dayOfMonth(input.day),
+    category: input.category,
+  }
+  const start = monthStart(today)
+  if (next.amount === sub.amount || sub.startedAt >= start) {
+    await store.saveSubscription(next)
+    return
+  }
+  const lastDayBefore = dayKey(new Date(today.getFullYear(), today.getMonth(), 0))
+  await store.saveSubscription({ ...sub, endedAt: lastDayBefore })
+  await store.saveSubscription({ ...next, id: newId(), startedAt: start })
+}
+
+/** Отмена: прошлые списания остаются в статистике, подписка уходит в архив. Ни разу не списанная просто удаляется. */
+export async function cancelSubscription(store: DataStore, sub: Subscription, today = new Date()): Promise<void> {
+  const firstCharge = chargeDate(sub.day, sub.startedAt.slice(0, 7))
+  if (firstCharge > dayKey(today)) await store.deleteSubscription(sub.id)
+  else await store.saveSubscription({ ...sub, endedAt: dayKey(today) })
+}
+
+/** Возврат из архива. Отменённая давно возвращается новой записью с этого месяца, чтобы не появились списания за пропущенное время. */
+export async function resumeSubscription(store: DataStore, sub: Subscription, today = new Date()): Promise<void> {
+  const start = monthStart(today)
+  if (sub.endedAt && sub.endedAt >= start) await store.saveSubscription({ ...sub, endedAt: null })
+  else await store.saveSubscription({ ...sub, id: newId(), startedAt: start, endedAt: null })
 }

@@ -3,22 +3,32 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { Bar, DataGate, formatDate, Panel } from '../../components/ui'
 import {
   addTransaction,
+  cancelSubscription,
   createCredit,
   createSalary,
+  createSubscription,
   growCredit,
   payCredit,
   receiveSalary,
+  resumeSubscription,
   updateCredit,
+  updateSubscription,
+  type SubscriptionInput,
 } from '../../data/actions'
 import { useAction } from '../../data/hooks'
-import type { Credit, Salary, Snapshot, Transaction } from '../../data/types'
+import type { Credit, Salary, Snapshot, Subscription, Transaction } from '../../data/types'
 import {
   categoryOf,
+  chargeDate,
+  chargeIn,
+  dayKey,
+  dayTitle,
   daysUntil,
   EXPENSE_CATEGORIES,
   expenseShares,
   formatMoney,
   INCOME_CATEGORIES,
+  isCharged,
   monthKey,
   monthRange,
   monthTitle,
@@ -27,9 +37,28 @@ import {
   shiftMonth,
 } from '../../game/treasury'
 
-const today = (): string => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const today = (): string => dayKey(new Date())
+
+// списания подписок живут в свитке рядом с обычными записями, но удаляются только вместе с подпиской
+const CHARGE_PREFIX = 'sub:'
+
+/** Уже прошедшие списания подписок за месяц — в виде расходов. */
+function chargesOf(subscriptions: Subscription[], month: string): Transaction[] {
+  const now = today()
+  return subscriptions.flatMap((s) => {
+    const date = chargeIn(s, month)
+    if (!date || !isCharged(date, now)) return []
+    return [
+      {
+        id: CHARGE_PREFIX + s.id,
+        kind: 'expense' as const,
+        amount: s.amount,
+        category: s.category,
+        note: s.name,
+        at: new Date(`${date}T12:00:00`).toISOString(),
+      },
+    ]
+  })
 }
 
 const sum = (list: Transaction[], kind: Transaction['kind']): number =>
@@ -293,6 +322,242 @@ function CreditPanel({ credits }: { credits: Credit[] }) {
   )
 }
 
+// ---------- подписки ----------
+
+interface SubscriptionDraft {
+  name: string
+  amount: string
+  day: string
+  category: string
+}
+
+function SubscriptionFields({ value, onChange }: { value: SubscriptionDraft; onChange: (next: SubscriptionDraft) => void }) {
+  return (
+    <>
+      <input
+        className="grow"
+        type="text"
+        placeholder="Название подписки"
+        value={value.name}
+        aria-label="Название подписки"
+        onChange={(e) => onChange({ ...value, name: e.target.value })}
+      />
+      <input
+        className="amount"
+        type="number"
+        min={0}
+        placeholder="Сумма"
+        value={value.amount}
+        aria-label="Сумма в месяц"
+        onChange={(e) => onChange({ ...value, amount: e.target.value })}
+      />
+      <label className="day-field">
+        <span className="muted">число</span>
+        <input
+          type="number"
+          min={1}
+          max={31}
+          value={value.day}
+          aria-label="Число месяца, когда списывается"
+          onChange={(e) => onChange({ ...value, day: e.target.value })}
+        />
+      </label>
+      <select value={value.category} aria-label="Категория" onChange={(e) => onChange({ ...value, category: e.target.value })}>
+        {EXPENSE_CATEGORIES.map((c) => (
+          <option key={c.key} value={c.key}>
+            {c.glyph} {c.name}
+          </option>
+        ))}
+      </select>
+    </>
+  )
+}
+
+const toInput = (v: SubscriptionDraft): SubscriptionInput => ({
+  name: v.name,
+  amount: Number(v.amount),
+  day: Number(v.day),
+  category: v.category,
+})
+
+const draftValid = (v: SubscriptionDraft): boolean =>
+  !!v.name.trim() && Number(v.amount) > 0 && Number(v.day) >= 1 && Number(v.day) <= 31
+
+function SubscriptionRow({ sub, month }: { sub: Subscription; month: string }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState<SubscriptionDraft>({ name: '', amount: '', day: '', category: 'other' })
+  const edit = useAction((store, input: SubscriptionInput) => updateSubscription(store, sub, input))
+  const cancel = useAction((store, s: Subscription) => cancelSubscription(store, s))
+  const category = categoryOf('expense', sub.category)
+  const now = new Date()
+  const isCurrent = month === monthKey(now)
+  const date = chargeIn(sub, month)
+  const charged = !!date && isCharged(date, today())
+
+  let status = 'в этом месяце ещё не действовала'
+  if (date && charged) {
+    status = `списано ${dayTitle(date)}`
+    // в текущем месяце подсказываем, к какому числу деньги понадобятся снова
+    if (isCurrent) status += ` · следующее ${dayTitle(chargeDate(sub.day, shiftMonth(month, 1)))}`
+  } else if (date) {
+    const [y, m, d] = date.split('-').map(Number)
+    const left = daysUntil(new Date(y, m - 1, d), now)
+    status = `спишется ${dayTitle(date)}`
+    if (isCurrent) status += left === 1 ? ' · завтра' : ` · через ${left} дн.`
+  }
+
+  const openEditor = () => {
+    setDraft({ name: sub.name, amount: String(sub.amount), day: String(sub.day), category: category.key })
+    setEditing(true)
+  }
+
+  const save = (e: FormEvent) => {
+    e.preventDefault()
+    if (!draftValid(draft)) return
+    edit.mutate(toInput(draft), { onSuccess: () => setEditing(false) })
+  }
+
+  if (editing) {
+    return (
+      <li>
+        <form className="row wrap" onSubmit={save}>
+          <SubscriptionFields value={draft} onChange={setDraft} />
+          <button className="small" type="submit" disabled={edit.isPending || !draftValid(draft)}>
+            Сохранить
+          </button>
+          <button className="small ghost" type="button" onClick={() => setEditing(false)}>
+            Отмена
+          </button>
+        </form>
+      </li>
+    )
+  }
+
+  return (
+    <li className={`row wrap subscription${charged ? ' charged' : ''}`}>
+      <span className="glyph-mark" style={{ color: category.color }} title={category.name} aria-hidden="true">
+        {category.glyph}
+      </span>
+      <span className="grow">
+        {sub.name}
+        <small className="muted">{status}</small>
+      </span>
+      <span className="money">{formatMoney(sub.amount)}</span>
+      <button className="small ghost" aria-label={`Изменить подписку «${sub.name}»`} onClick={openEditor}>
+        ✎
+      </button>
+      <button
+        className="small danger"
+        aria-label={`Отменить подписку «${sub.name}»`}
+        disabled={cancel.isPending}
+        onClick={() =>
+          confirm(`Отменить подписку «${sub.name}»? Уже прошедшие списания останутся в статистике.`) && cancel.mutate(sub)
+        }
+      >
+        ×
+      </button>
+    </li>
+  )
+}
+
+function ArchivedSubscriptionRow({ sub }: { sub: Subscription }) {
+  const resume = useAction((store, s: Subscription) => resumeSubscription(store, s))
+  const remove = useAction((store, id: string) => store.deleteSubscription(id))
+  return (
+    <li className="row wrap subscription">
+      <span className="grow">
+        {sub.name}
+        <small className="muted">
+          {sub.day}-го числа · действовала до {sub.endedAt ? dayTitle(sub.endedAt) : '—'}
+        </small>
+      </span>
+      <span className="money">{formatMoney(sub.amount)}</span>
+      <button className="small" disabled={resume.isPending} onClick={() => resume.mutate(sub)}>
+        Вернуть
+      </button>
+      <button
+        className="small danger"
+        aria-label={`Удалить подписку «${sub.name}» совсем`}
+        onClick={() =>
+          confirm(`Удалить «${sub.name}» совсем? Её прошлые списания исчезнут из статистики.`) && remove.mutate(sub.id)
+        }
+      >
+        ×
+      </button>
+    </li>
+  )
+}
+
+const EMPTY_DRAFT: SubscriptionDraft = { name: '', amount: '', day: '1', category: 'other' }
+
+function SubscriptionPanel({ subscriptions, month }: { subscriptions: Subscription[]; month: string }) {
+  const [draft, setDraft] = useState(EMPTY_DRAFT)
+  const [tab, setTab] = useState<'active' | 'archive'>('active')
+  const create = useAction((store, input: SubscriptionInput) => createSubscription(store, input))
+  const now = today()
+  const active = subscriptions.filter((s) => !s.endedAt).sort((a, b) => a.day - b.day)
+  const archived = subscriptions
+    .filter((s) => s.endedAt)
+    .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''))
+
+  let charged = 0
+  let pending = 0
+  for (const s of subscriptions) {
+    const date = chargeIn(s, month)
+    if (!date) continue
+    if (isCharged(date, now)) charged += s.amount
+    else pending += s.amount
+  }
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    if (!draftValid(draft)) return
+    create.mutate(toInput(draft), { onSuccess: () => setDraft(EMPTY_DRAFT) })
+  }
+
+  return (
+    <Panel title="契 Подписки">
+      <p className="muted">
+        {monthTitle(month)}: списано {formatMoney(charged)} · ещё спишется {formatMoney(pending)}. В расходы подписка попадает
+        в день списания.
+      </p>
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === 'active'} onClick={() => setTab('active')}>
+          Действующие · {active.length}
+        </button>
+        <button role="tab" aria-selected={tab === 'archive'} onClick={() => setTab('archive')}>
+          Архив · {archived.length}
+        </button>
+      </div>
+      {tab === 'active' && active.length > 0 && (
+        <ul className="list">
+          {active.map((s) => (
+            <SubscriptionRow key={s.id} sub={s} month={month} />
+          ))}
+        </ul>
+      )}
+      {tab === 'active' && active.length === 0 && (
+        <p className="muted">Подписок нет. Добавь первую: название, сумма и число месяца, когда она списывается.</p>
+      )}
+      {tab === 'archive' && archived.length > 0 && (
+        <ul className="list">
+          {archived.map((s) => (
+            <ArchivedSubscriptionRow key={s.id} sub={s} />
+          ))}
+        </ul>
+      )}
+      {tab === 'archive' && archived.length === 0 && <p className="muted">Архив пуст. Сюда уходят отменённые подписки.</p>}
+      <form className="row wrap" onSubmit={submit}>
+        <SubscriptionFields value={draft} onChange={setDraft} />
+        <button type="submit" disabled={create.isPending || !draftValid(draft)}>
+          Добавить
+        </button>
+      </form>
+      {create.error && <p className="error">{(create.error as Error).message}</p>}
+    </Panel>
+  )
+}
+
 // ---------- запись дохода или расхода ----------
 
 function EntryForm({ month }: { month: string }) {
@@ -429,9 +694,10 @@ function Treasury({ snapshot }: { snapshot: Snapshot }) {
   const [month, setMonth] = useState(current)
   const months = monthRange(current, [...snapshot.transactions.map((t) => monthKey(t.at)), month])
   const remove = useAction((store, id: string) => store.deleteTransaction(id))
-  const entries = snapshot.transactions
-    .filter((t) => monthKey(t.at) === month)
-    .sort((a, b) => b.at.localeCompare(a.at))
+  const entries = [
+    ...snapshot.transactions.filter((t) => monthKey(t.at) === month),
+    ...chargesOf(snapshot.subscriptions, month),
+  ].sort((a, b) => b.at.localeCompare(a.at))
   const income = sum(entries, 'income')
   const expense = sum(entries, 'expense')
   const debt = snapshot.credits.reduce((s, c) => s + c.remaining, 0)
@@ -499,18 +765,25 @@ function Treasury({ snapshot }: { snapshot: Snapshot }) {
                       {category.glyph} {category.name}
                     </span>
                     {t.note && <span className="muted"> — {t.note}</span>}
+                    {t.id.startsWith(CHARGE_PREFIX) && <span className="muted"> · подписка</span>}
                   </span>
                   <span className={`money ${t.kind}`}>
                     {t.kind === 'income' ? '+' : '−'}
                     {formatMoney(t.amount)}
                   </span>
-                  <button
-                    className="small danger"
-                    aria-label="Удалить запись"
-                    onClick={() => confirm('Удалить эту запись?') && remove.mutate(t.id)}
-                  >
-                    ×
-                  </button>
+                  {t.id.startsWith(CHARGE_PREFIX) ? (
+                    <span className="auto-mark muted" title="Списание подписки — управляется в «Подписках» ниже" aria-hidden="true">
+                      契
+                    </span>
+                  ) : (
+                    <button
+                      className="small danger"
+                      aria-label="Удалить запись"
+                      onClick={() => confirm('Удалить эту запись?') && remove.mutate(t.id)}
+                    >
+                      ×
+                    </button>
+                  )}
                 </li>
               )
             })}
@@ -522,6 +795,8 @@ function Treasury({ snapshot }: { snapshot: Snapshot }) {
         <SalaryPanel salaries={snapshot.salaries} />
         <CreditPanel credits={snapshot.credits} />
       </div>
+
+      <SubscriptionPanel subscriptions={snapshot.subscriptions} month={month} />
     </>
   )
 }

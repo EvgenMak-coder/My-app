@@ -63,6 +63,20 @@ export interface Salary {
   amount: number
 }
 
+/** Подписка: списывается каждый месяц в указанное число; расчёт списаний — в game/treasury.ts */
+export interface Subscription {
+  id: string
+  name: string
+  amount: number
+  day: number
+  /** ключ категории расходов */
+  category: string
+  /** первый день, с которого подписка считается, 'ГГГГ-ММ-ДД' */
+  startedAt: string
+  /** последний день действия; null — действует, иначе в архиве */
+  endedAt: string | null
+}
+
 export interface Transaction {
   id: string
   kind: 'income' | 'expense'
@@ -119,6 +133,7 @@ export interface Snapshot {
   credits: Credit[]
   salaries: Salary[]
   transactions: Transaction[]
+  subscriptions: Subscription[]
 }
 
 /** Формат, который пишет scripts/import_excel.py */
@@ -170,6 +185,7 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (!Array.isArray(s.credits)) s.credits = []
   if (!Array.isArray(s.salaries)) s.salaries = []
   if (!Array.isArray(s.transactions)) s.transactions = []
+  if (!Array.isArray(s.subscriptions)) s.subscriptions = []
   return s
 }
 
@@ -189,6 +205,7 @@ export function emptySnapshot(): Snapshot {
     credits: [],
     salaries: [],
     transactions: [],
+    subscriptions: [],
   }
 }
 
@@ -232,6 +249,7 @@ export function snapshotFromSeed(seed: Seed): Snapshot {
     credits: (seed.credits ?? []).map((c, i) => ({ id: newId(), name: c.name, total: c.total, remaining: c.remaining, position: i })),
     salaries: (seed.salaries ?? []).map((s) => ({ id: newId(), name: s.name, day: s.day, amount: s.amount })),
     transactions: [],
+    subscriptions: [],
     areaHistory: areas.map((a) => ({ id: newId(), refId: a.id, value: a.value, at })),
     skillHistory: skills.map((s) => ({ id: newId(), refId: s.id, value: s.value, at })),
     xpEvents: [],

@@ -12,6 +12,7 @@ import {
   type Goal,
   type Salary,
   type Snapshot,
+  type Subscription,
   type Titan,
   type Transaction,
   type Workout,
@@ -28,17 +29,28 @@ const forceLocal = import.meta.env.VITE_STORAGE === 'local'
 
 export const supabase: SupabaseClient | null = url && key && !forceLocal ? createClient(url, key) : null
 
+interface Failure {
+  message: string
+  code?: string
+}
+
 interface Result<T> {
   data: T | null
-  error: { message: string } | null
+  error: Failure | null
 }
+
+// таблицы ещё нет: приложение обновилось раньше, чем в Supabase выполнили свежую миграцию
+const tableMissing = (error: Failure | null): boolean =>
+  !!error && (error.code === 'PGRST205' || error.code === '42P01')
+
+const NO_SUBSCRIPTIONS = 'В облаке ещё нет таблицы подписок — выполни в Supabase файл 0005_subscriptions.sql'
 
 function rows<T>(res: Result<T[]>): T[] {
   if (res.error) throw new Error(res.error.message)
   return res.data ?? []
 }
 
-function check(res: { error: { message: string } | null }): void {
+function check(res: { error: Failure | null }): void {
   if (res.error) throw new Error(res.error.message)
 }
 
@@ -50,14 +62,25 @@ interface TitanRow { id: string; key: string; name: string; value: number; posit
 interface TitanHistoryRow { id: string; titan_id: string; value: number; at: string }
 interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
 interface GoalRow { id: string; title: string; level: number; progress: number; color: string; rewarded: boolean; created_at: string; done_at: string | null; position: number }
+interface SubscriptionRow { id: string; name: string; amount: number; day: number; category: string; started_at: string; ended_at: string | null }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
+
+const subscriptionRow = (s: Subscription): SubscriptionRow => ({
+  id: s.id,
+  name: s.name,
+  amount: s.amount,
+  day: s.day,
+  category: s.category,
+  started_at: s.startedAt,
+  ended_at: s.endedAt,
+})
 
 // user_id в строках не передаём — в базе стоит default auth.uid(), а RLS не пускает к чужим данным
 export class SupabaseStore implements DataStore {
   constructor(private db: SupabaseClient) {}
 
   async load(): Promise<Snapshot> {
-    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions] = await Promise.all([
+    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions, subscriptions] = await Promise.all([
       this.db.from('profile').select('dragon_name').maybeSingle(),
       this.db.from('life_areas').select('id,key,name,value,position').order('position'),
       this.db.from('skills').select('id,category,name,value,position').order('position'),
@@ -71,6 +94,7 @@ export class SupabaseStore implements DataStore {
       this.db.from('credits').select('id,name,total,remaining,position').order('position'),
       this.db.from('salaries').select('id,name,day,amount').order('day'),
       this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
+      this.db.from('subscriptions').select('id,name,amount,day,category,started_at,ended_at').order('day'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -98,6 +122,16 @@ export class SupabaseStore implements DataStore {
       credits: rows<Credit>(credits),
       salaries: rows<Salary>(salaries),
       transactions: rows<Transaction>(transactions),
+      // без таблицы подписок остальное приложение продолжает работать
+      subscriptions: (tableMissing(subscriptions.error) ? [] : rows<SubscriptionRow>(subscriptions)).map((r) => ({
+        id: r.id,
+        name: r.name,
+        amount: r.amount,
+        day: r.day,
+        category: r.category,
+        startedAt: r.started_at,
+        endedAt: r.ended_at,
+      })),
       goals: rows<GoalRow>(goals).map((g) => ({ id: g.id, title: g.title, level: g.level, progress: g.progress, color: g.color, rewarded: g.rewarded, createdAt: g.created_at, doneAt: g.done_at, position: g.position })),
       titanHistory: rows<TitanHistoryRow>(titanHistory).map((h) => ({ id: h.id, refId: h.titan_id, value: h.value, at: h.at })),
       workouts: rows<WorkoutRow>(workouts).map((w) => ({ id: w.id, titanId: w.titan_id, type: w.type, result: w.result, gain: w.gain, at: w.at })),
@@ -176,6 +210,16 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('transactions').delete().eq('id', id))
   }
 
+  async saveSubscription(subscription: Subscription): Promise<void> {
+    const res = await this.db.from('subscriptions').upsert(subscriptionRow(subscription))
+    if (tableMissing(res.error)) throw new Error(NO_SUBSCRIPTIONS)
+    check(res)
+  }
+
+  async deleteSubscription(id: string): Promise<void> {
+    check(await this.db.from('subscriptions').delete().eq('id', id))
+  }
+
   async setDragonName(name: string): Promise<void> {
     const { data, error } = await this.db.auth.getUser()
     if (error || !data.user) throw new Error('Нужно войти в аккаунт')
@@ -194,6 +238,8 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('credits').delete().neq('id', all))
     check(await this.db.from('salaries').delete().neq('id', all))
     check(await this.db.from('transactions').delete().neq('id', all))
+    const cleared = await this.db.from('subscriptions').delete().neq('id', all)
+    if (!tableMissing(cleared.error)) check(cleared)
 
     if (s.areas.length) check(await this.db.from('life_areas').insert(s.areas))
     if (s.skills.length) check(await this.db.from('skills').insert(s.skills))
@@ -216,6 +262,11 @@ export class SupabaseStore implements DataStore {
     if (s.credits.length) check(await this.db.from('credits').insert(s.credits))
     if (s.salaries.length) check(await this.db.from('salaries').insert(s.salaries))
     if (s.transactions.length) check(await this.db.from('transactions').insert(s.transactions))
+    if (s.subscriptions.length) {
+      const res = await this.db.from('subscriptions').insert(s.subscriptions.map(subscriptionRow))
+      if (tableMissing(res.error)) throw new Error(NO_SUBSCRIPTIONS)
+      check(res)
+    }
     if (s.goals.length) check(await this.db.from('goals').insert(s.goals.map((g) => ({ id: g.id, title: g.title, level: g.level, progress: g.progress, color: g.color, rewarded: g.rewarded, created_at: g.createdAt, done_at: g.doneAt, position: g.position }))))
     if (s.titanHistory.length) {
       check(

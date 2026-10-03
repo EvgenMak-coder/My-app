@@ -9,6 +9,7 @@ import {
   type Salary,
   type Skill,
   type Snapshot,
+  type Subscription,
   type Titan,
   type Transaction,
   type Workout,
@@ -145,6 +146,20 @@ export class LocalStore implements DataStore {
   deleteTransaction(id: string): Promise<void> {
     return this.mutate((s) => {
       s.transactions = s.transactions.filter((x) => x.id !== id)
+    })
+  }
+
+  saveSubscription(subscription: Subscription): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.subscriptions.findIndex((x) => x.id === subscription.id)
+      if (i >= 0) s.subscriptions[i] = subscription
+      else s.subscriptions.push(subscription)
+    })
+  }
+
+  deleteSubscription(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.subscriptions = s.subscriptions.filter((x) => x.id !== id)
     })
   }
 

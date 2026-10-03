@@ -75,6 +75,44 @@ export function daysUntil(target: Date, from: Date): number {
   return Math.round((b - a) / 86_400_000)
 }
 
+/** 'ГГГГ-ММ-ДД' по местному времени */
+export function dayKey(date: Date): string {
+  return `${monthKey(date)}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** '15 октября' из 'ГГГГ-ММ-ДД' */
+export function dayTitle(key: string): string {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+}
+
+/** То, что нужно знать о подписке для расчёта списаний */
+export interface Recurring {
+  day: number
+  /** первый день, с которого подписка считается, 'ГГГГ-ММ-ДД' */
+  startedAt: string
+  /** последний день действия; null — действует */
+  endedAt: string | null
+}
+
+/** День списания в месяце: 31-е число в коротком месяце — его последний день. */
+export function chargeDate(day: number, month: string): string {
+  const [year, m] = month.split('-').map(Number)
+  const last = new Date(year, m, 0).getDate()
+  return `${month}-${String(Math.min(Math.max(1, day), last)).padStart(2, '0')}`
+}
+
+/** Дата списания в этом месяце или null, если в тот день подписка не действовала. */
+export function chargeIn(sub: Recurring, month: string): string | null {
+  const date = chargeDate(sub.day, month)
+  if (date < sub.startedAt) return null
+  if (sub.endedAt && date > sub.endedAt) return null
+  return date
+}
+
+/** Списание попадает в общий счёт только с того дня, когда оно произошло. */
+export const isCharged = (date: string, today: string): boolean => date <= today
+
 export interface Share {
   category: MoneyCategory
   amount: number

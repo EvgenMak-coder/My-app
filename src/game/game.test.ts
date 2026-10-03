@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
-import { daysUntil, expenseShares, monthKey, monthRange, nextPayday, paidPercent, shiftMonth } from './treasury'
+import {
+  chargeDate,
+  chargeIn,
+  dayKey,
+  daysUntil,
+  expenseShares,
+  isCharged,
+  monthKey,
+  monthRange,
+  nextPayday,
+  paidPercent,
+  shiftMonth,
+} from './treasury'
 import { areaXp, skillXp, stageProgress, totalXp } from './xp'
 
 describe('rankFor', () => {
@@ -147,5 +159,30 @@ describe('treasury', () => {
     expect(paidPercent(290000, 253663)).toBe(13)
     expect(paidPercent(140000, 0)).toBe(100)
     expect(paidPercent(0, 0)).toBe(100)
+  })
+
+  it('ставит списание подписки на её число, а в коротком месяце — на последний день', () => {
+    expect(chargeDate(5, '2026-10')).toBe('2026-10-05')
+    expect(chargeDate(31, '2026-11')).toBe('2026-11-30')
+    expect(chargeDate(31, '2027-02')).toBe('2027-02-28')
+    expect(dayKey(new Date(2026, 9, 3, 23, 50))).toBe('2026-10-03')
+  })
+
+  it('считает списание только пока подписка действует', () => {
+    const sub = { day: 15, startedAt: '2026-10-01', endedAt: null }
+    expect(chargeIn(sub, '2026-09')).toBeNull()
+    expect(chargeIn(sub, '2026-10')).toBe('2026-10-15')
+    expect(chargeIn(sub, '2027-03')).toBe('2027-03-15')
+    const cancelled = { ...sub, endedAt: '2026-12-10' }
+    expect(chargeIn(cancelled, '2026-11')).toBe('2026-11-15')
+    expect(chargeIn(cancelled, '2026-12')).toBeNull()
+    // отменили в день списания — оно уже прошло
+    expect(chargeIn({ ...sub, endedAt: '2026-12-15' }, '2026-12')).toBe('2026-12-15')
+  })
+
+  it('учитывает списание в общем счёте только с его дня', () => {
+    expect(isCharged('2026-10-15', '2026-10-14')).toBe(false)
+    expect(isCharged('2026-10-15', '2026-10-15')).toBe(true)
+    expect(isCharged('2026-10-15', '2026-11-01')).toBe(true)
   })
 })
