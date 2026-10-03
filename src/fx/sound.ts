@@ -106,12 +106,28 @@ class Soundscape {
 
     // если звук включён с прошлого раза, он оживёт при первом же касании
     const wake = () => {
-      if (this.enabled && !document.hidden) void ctx.resume()
+      if (!this.enabled || document.hidden) return
+      if (session) session.type = 'playback'
+      void ctx.resume().then(() => {
+        // возвращаемся плавно, а не на полной громкости сразу
+        this.master.gain.cancelScheduledValues(ctx.currentTime)
+        this.master.gain.setTargetAtTime(this.volume, ctx.currentTime, 0.4)
+      })
+    }
+    // Свернули приложение: iPhone замораживает страницу, а звук в режиме «playback» продолжает идти
+    // и зацикливает последний обрывок — получается писк. Поэтому глушим мгновенно, без таймеров
+    // (они в фоне уже не сработают), и отдаём звуковой канал системе.
+    const sleep = () => {
+      this.master.gain.cancelScheduledValues(ctx.currentTime)
+      this.master.gain.value = 0
+      if (session) session.type = 'ambient'
+      void ctx.suspend()
     }
     window.addEventListener('pointerdown', wake)
     window.addEventListener('keydown', wake)
+    window.addEventListener('pagehide', sleep)
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) void ctx.suspend()
+      if (document.hidden) sleep()
       else wake()
     })
   }

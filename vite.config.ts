@@ -7,10 +7,13 @@ export default defineConfig({
   base: './',
   // по умолчанию Node слушает только IPv6 (::1), и http://localhost не открывается
   server: { host: '127.0.0.1' },
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // регистрацию и проверку обновлений делает src/pwa.ts
+      injectRegister: false,
       includeAssets: ['favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Небесный дракон',

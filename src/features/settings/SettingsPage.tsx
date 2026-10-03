@@ -11,6 +11,7 @@ import {
   useAppearance,
 } from '../../theme/appearance'
 import { soundscape } from '../../fx/sound'
+import { BUILD_TIME, forceRefresh } from '../../pwa'
 import { DataGate, Panel } from '../../components/ui'
 import { useAction } from '../../data/hooks'
 import { cloudEnabled, supabase } from '../../data/index'
@@ -177,6 +178,22 @@ function Settings({ snapshot }: { snapshot: Snapshot }) {
           </label>
         </div>
         {message && <p className="muted">{message}</p>}
+      </Panel>
+
+      <Panel title="Версия">
+        <div className="row wrap">
+          <p className="grow">
+            Собрана{' '}
+            {new Date(BUILD_TIME).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+          </p>
+          <button className="ghost" onClick={() => void forceRefresh()}>
+            Обновить приложение
+          </button>
+        </div>
+        <p className="muted">
+          Приложение проверяет обновления само, когда его открывают. Кнопка — на случай, если версия не меняется: она
+          загружает сайт заново, данные при этом не трогает.
+        </p>
       </Panel>
 
       <Panel title="Хранилище">
