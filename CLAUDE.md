@@ -7,7 +7,8 @@
 ## Команды
 
 ```bash
-npm run dev     # сервер разработки, http://localhost:5173
+npm run dev     # сервер разработки, http://localhost:5173 (с ключами в .env.local — облако, нужен вход)
+npm run dev:local   # то же без облака, порт 5174: данные в браузере, вход не нужен — для проверок Claude
 npm run test    # vitest: правила игры (src/game)
 npm run build   # tsc --noEmit + сборка в dist/
 python scripts/import_excel.py "путь/к/Небесный дракон.xlsx"   # Excel → seed.local.json

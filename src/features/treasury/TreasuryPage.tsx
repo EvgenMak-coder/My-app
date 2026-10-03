@@ -1,7 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
 import { Bar, DataGate, formatDate, Panel } from '../../components/ui'
-import { addTransaction, createCredit, createSalary, payCredit, receiveSalary } from '../../data/actions'
+import {
+  addTransaction,
+  createCredit,
+  createSalary,
+  growCredit,
+  payCredit,
+  receiveSalary,
+  updateCredit,
+} from '../../data/actions'
 import { useAction } from '../../data/hooks'
 import type { Credit, Salary, Snapshot, Transaction } from '../../data/types'
 import {
@@ -108,14 +116,36 @@ function SalaryPanel({ salaries }: { salaries: Salary[] }) {
 // ---------- кредиты ----------
 
 function CreditRow({ credit }: { credit: Credit }) {
-  const [payment, setPayment] = useState('')
-  const pay = useAction((store, amount: number) => payCredit(store, credit, amount))
+  const [amount, setAmount] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(credit.name)
+  const [total, setTotal] = useState(String(credit.total))
+  const [remaining, setRemaining] = useState(String(credit.remaining))
+  const pay = useAction((store, sum: number) => payCredit(store, credit, sum))
+  const grow = useAction((store, sum: number) => growCredit(store, credit, sum))
+  const edit = useAction((store, c: { name: string; total: number; remaining: number }) =>
+    updateCredit(store, credit, c.name, c.total, c.remaining),
+  )
   const remove = useAction((store, id: string) => store.deleteCredit(id))
   const paid = paidPercent(credit.total, credit.remaining)
+  const sum = Number(amount)
+  const busy = pay.isPending || grow.isPending
+  const clear = { onSuccess: () => setAmount('') }
 
-  const submit = (e: FormEvent) => {
+  const openEditor = () => {
+    setName(credit.name)
+    setTotal(String(credit.total))
+    setRemaining(String(credit.remaining))
+    setEditing(true)
+  }
+
+  const save = (e: FormEvent) => {
     e.preventDefault()
-    if (Number(payment) > 0) pay.mutate(Number(payment), { onSuccess: () => setPayment('') })
+    if (!name.trim()) return
+    edit.mutate(
+      { name, total: Number(total) || 0, remaining: Number(remaining) || 0 },
+      { onSuccess: () => setEditing(false) },
+    )
   }
 
   return (
@@ -123,38 +153,72 @@ function CreditRow({ credit }: { credit: Credit }) {
       <div className="row wrap">
         <span className="grow">
           {credit.name}
-          <small className="muted"> из {formatMoney(credit.total)}</small>
+          <small className="muted">
+            {' '}
+            из {formatMoney(credit.total)} · погашено {paid}%
+          </small>
         </span>
-        <span className="money">{credit.remaining > 0 ? formatMoney(credit.remaining) : 'Оковы сброшены'}</span>
+        <span className={credit.remaining > 0 ? 'money' : 'money income'}>
+          {credit.remaining > 0 ? formatMoney(credit.remaining) : 'Оковы сброшены'}
+        </span>
       </div>
       <Bar value={paid} gold />
-      <form className="row wrap" onSubmit={submit}>
-        <span className="grow muted num">погашено {paid}%</span>
-        {credit.remaining > 0 && (
-          <>
-            <input
-              className="amount"
-              type="number"
-              min={0}
-              placeholder="Платёж"
-              value={payment}
-              aria-label={`Платёж по «${credit.name}»`}
-              onChange={(e) => setPayment(e.target.value)}
-            />
-            <button className="small" type="submit" disabled={pay.isPending || !(Number(payment) > 0)}>
-              Внести
+
+      {editing ? (
+        // точная правка: когда проще вписать цифры из банка, чем считать разницу
+        <form className="row wrap" onSubmit={save}>
+          <input className="grow" type="text" value={name} aria-label="Название" onChange={(e) => setName(e.target.value)} />
+          <label>
+            <span className="muted">всего </span>
+            <input className="amount" type="number" min={0} value={total} onChange={(e) => setTotal(e.target.value)} />
+          </label>
+          <label>
+            <span className="muted">осталось </span>
+            <input className="amount" type="number" min={0} value={remaining} onChange={(e) => setRemaining(e.target.value)} />
+          </label>
+          <button className="small" type="submit" disabled={edit.isPending || !name.trim()}>
+            Сохранить
+          </button>
+          <button className="small ghost" type="button" onClick={() => setEditing(false)}>
+            Отмена
+          </button>
+        </form>
+      ) : (
+        <div className="row wrap">
+          <input
+            className="amount grow"
+            type="number"
+            min={0}
+            placeholder="Сумма"
+            value={amount}
+            aria-label={`Сумма по «${credit.name}»`}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          {credit.remaining > 0 && (
+            <button className="small" disabled={busy || !(sum > 0)} onClick={() => pay.mutate(sum, clear)}>
+              Погасить
             </button>
-          </>
-        )}
-        <button
-          className="small danger"
-          type="button"
-          aria-label={`Удалить кредит «${credit.name}»`}
-          onClick={() => confirm(`Удалить кредит «${credit.name}»?`) && remove.mutate(credit.id)}
-        >
-          ×
-        </button>
-      </form>
+          )}
+          <button
+            className="small ghost"
+            title="Проценты или новая трата по кредитке"
+            disabled={busy || !(sum > 0)}
+            onClick={() => grow.mutate(sum, clear)}
+          >
+            + Долг
+          </button>
+          <button className="small ghost" aria-label={`Изменить кредит «${credit.name}»`} onClick={openEditor}>
+            ✎
+          </button>
+          <button
+            className="small danger"
+            aria-label={`Удалить кредит «${credit.name}»`}
+            onClick={() => confirm(`Удалить кредит «${credit.name}»?`) && remove.mutate(credit.id)}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </li>
   )
 }
@@ -166,8 +230,14 @@ function CreditPanel({ credits }: { credits: Credit[] }) {
   const create = useAction((store, c: { name: string; total: number; remaining: number }) =>
     createCredit(store, c.name, c.total, c.remaining, credits.length),
   )
+  const [tab, setTab] = useState<'active' | 'archive'>('active')
   const debt = credits.reduce((s, c) => s + c.remaining, 0)
   const whole = credits.reduce((s, c) => s + c.total, 0)
+  // погашенный полностью кредит сам уходит в архив; «+ Долг» или правка возвращают его обратно
+  const sorted = [...credits].sort((a, b) => a.position - b.position)
+  const active = sorted.filter((c) => c.remaining > 0)
+  const archived = sorted.filter((c) => c.remaining <= 0)
+  const shown = tab === 'active' ? active : archived
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -189,12 +259,27 @@ function CreditPanel({ credits }: { credits: Credit[] }) {
       <p className="muted">
         Осталось {formatMoney(debt)} из {formatMoney(whole)} · погашено {paidPercent(whole, debt)}%
       </p>
-      {credits.length > 0 && (
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === 'active'} onClick={() => setTab('active')}>
+          Действующие · {active.length}
+        </button>
+        <button role="tab" aria-selected={tab === 'archive'} onClick={() => setTab('archive')}>
+          Архив · {archived.length}
+        </button>
+      </div>
+      {shown.length > 0 ? (
         <ul className="list">
-          {[...credits].sort((a, b) => a.position - b.position).map((c) => (
+          {shown.map((c) => (
             <CreditRow key={c.id} credit={c} />
           ))}
         </ul>
+      ) : (
+        <p className="muted">
+          {tab === 'active' ? 'Долгов нет — все оковы сброшены.' : 'Архив пуст. Сюда уходят кредиты, погашенные полностью.'}
+        </p>
+      )}
+      {tab === 'archive' && archived.length > 0 && (
+        <p className="muted">Сброшено оков на {formatMoney(archived.reduce((s, c) => s + c.total, 0))}.</p>
       )}
       <form className="row wrap" onSubmit={submit}>
         <input className="grow" type="text" placeholder="Новый кредит" value={name} onChange={(e) => setName(e.target.value)} />

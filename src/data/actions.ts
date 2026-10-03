@@ -185,3 +185,21 @@ export async function createCredit(
 export async function payCredit(store: DataStore, credit: Credit, amount: number): Promise<void> {
   await store.saveCredit({ ...credit, remaining: Math.max(0, credit.remaining - rubles(amount)) })
 }
+
+/** Долг вырос: начислены проценты или потрачено ещё с кредитки. Если остаток перерос исходную сумму, поднимаем и её. */
+export async function growCredit(store: DataStore, credit: Credit, amount: number): Promise<void> {
+  const remaining = credit.remaining + rubles(amount)
+  await store.saveCredit({ ...credit, remaining, total: Math.max(credit.total, remaining) })
+}
+
+/** Точная правка кредита — вписать цифры как в банке. */
+export async function updateCredit(
+  store: DataStore,
+  credit: Credit,
+  name: string,
+  total: number,
+  remaining: number,
+): Promise<void> {
+  const owed = rubles(remaining)
+  await store.saveCredit({ ...credit, name: name.trim(), remaining: owed, total: Math.max(rubles(total), owed) })
+}

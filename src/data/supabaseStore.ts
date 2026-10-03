@@ -22,7 +22,11 @@ import {
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase: SupabaseClient | null = url && key ? createClient(url, key) : null
+// VITE_STORAGE=local (режим `npm run dev:local`) — работать без облака даже при заданных ключах:
+// так приложение можно смотреть и проверять без входа, на тестовых данных в браузере
+const forceLocal = import.meta.env.VITE_STORAGE === 'local'
+
+export const supabase: SupabaseClient | null = url && key && !forceLocal ? createClient(url, key) : null
 
 interface Result<T> {
   data: T | null
