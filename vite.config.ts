@@ -1,13 +1,20 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// номер версии ведётся в package.json: патч (+0.0.1) на каждую отправку, новая возможность — +0.1.0
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as { version: string }
 
 export default defineConfig({
   // относительные пути — сайт работает из подпапки GitHub Pages
   base: './',
   // по умолчанию Node слушает только IPv6 (::1), и http://localhost не открывается
   server: { host: '127.0.0.1' },
-  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [
     react(),
     VitePWA({

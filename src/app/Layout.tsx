@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { APP_VERSION } from '../pwa'
 
 const LINKS = [
   { to: '/', glyph: '龍', label: 'Главная' },
@@ -15,7 +16,10 @@ export function Layout() {
   return (
     <div className="shell">
       <nav className="nav" aria-label="Разделы">
-        <span className="brand">Небесный дракон</span>
+        <span className="brand">
+          Небесный дракон
+          <small>v{APP_VERSION}</small>
+        </span>
         {LINKS.map((l) => (
           <NavLink key={l.to} to={l.to} end={l.to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
             <span className="glyph" aria-hidden="true">

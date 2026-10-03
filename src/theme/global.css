@@ -834,11 +834,50 @@ input[type='range'] {
   width: 100%;
 }
 
+/* iPhone рисует поле даты по-своему: шире ячейки и выше соседей. Снимаем системный вид и задаём размеры сами. */
 input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
   background: rgba(0, 0, 0, 0.55);
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 8px 10px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 2.65em;
+  line-height: 1.3;
+}
+
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* без этого ячейка сетки не может стать уже своего содержимого, и поле вылезает на соседа */
+.workout-form label {
+  min-width: 0;
+}
+
+select {
+  min-height: 2.65em;
+}
+
+.nav .brand small {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-shadow: none;
+}
+
+.version {
+  font-family: var(--font-title);
+  font-size: 1.2rem;
+  color: var(--accent-bright);
+  font-variant-numeric: lining-nums;
 }
 
 @media (min-width: 700px) {

@@ -11,7 +11,7 @@ import {
   useAppearance,
 } from '../../theme/appearance'
 import { soundscape } from '../../fx/sound'
-import { BUILD_TIME, forceRefresh } from '../../pwa'
+import { APP_VERSION, BUILD_TIME, forceRefresh } from '../../pwa'
 import { DataGate, Panel } from '../../components/ui'
 import { useAction } from '../../data/hooks'
 import { cloudEnabled, supabase } from '../../data/index'
@@ -183,7 +183,7 @@ function Settings({ snapshot }: { snapshot: Snapshot }) {
       <Panel title="Версия">
         <div className="row wrap">
           <p className="grow">
-            Собрана{' '}
+            <b className="version">v{APP_VERSION}</b> · собрана{' '}
             {new Date(BUILD_TIME).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
           </p>
           <button className="ghost" onClick={() => void forceRefresh()}>

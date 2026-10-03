@@ -33,3 +33,6 @@ export async function forceRefresh(): Promise<void> {
 
 /** Когда собрана эта версия — чтобы было видно, обновилось ли приложение. */
 export const BUILD_TIME: string = __BUILD_TIME__
+
+/** Номер версии из package.json, например «1.0.1» */
+export const APP_VERSION: string = __APP_VERSION__
