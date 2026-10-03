@@ -7,7 +7,6 @@ create table subscriptions (
   name text not null,
   amount int not null check (amount >= 0),
   day int not null check (day between 1 and 31),
-  category text not null default 'other',
   started_at date not null default current_date,
   ended_at date
 );

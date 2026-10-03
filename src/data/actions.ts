@@ -211,7 +211,6 @@ export interface SubscriptionInput {
   name: string
   amount: number
   day: number
-  category: string
 }
 
 const monthStart = (date: Date): string => `${monthKey(date)}-01`
@@ -223,7 +222,6 @@ export async function createSubscription(store: DataStore, input: SubscriptionIn
     name: input.name.trim(),
     amount: rubles(input.amount),
     day: dayOfMonth(input.day),
-    category: input.category,
     startedAt: monthStart(today),
     endedAt: null,
   })
@@ -244,7 +242,6 @@ export async function updateSubscription(
     name: input.name.trim(),
     amount: rubles(input.amount),
     day: dayOfMonth(input.day),
-    category: input.category,
   }
   const start = monthStart(today)
   if (next.amount === sub.amount || sub.startedAt >= start) {

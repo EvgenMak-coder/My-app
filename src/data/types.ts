@@ -69,8 +69,6 @@ export interface Subscription {
   name: string
   amount: number
   day: number
-  /** ключ категории расходов */
-  category: string
   /** первый день, с которого подписка считается, 'ГГГГ-ММ-ДД' */
   startedAt: string
   /** последний день действия; null — действует, иначе в архиве */

@@ -62,7 +62,7 @@ interface TitanRow { id: string; key: string; name: string; value: number; posit
 interface TitanHistoryRow { id: string; titan_id: string; value: number; at: string }
 interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
 interface GoalRow { id: string; title: string; level: number; progress: number; color: string; rewarded: boolean; created_at: string; done_at: string | null; position: number }
-interface SubscriptionRow { id: string; name: string; amount: number; day: number; category: string; started_at: string; ended_at: string | null }
+interface SubscriptionRow { id: string; name: string; amount: number; day: number; started_at: string; ended_at: string | null }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
 
 const subscriptionRow = (s: Subscription): SubscriptionRow => ({
@@ -70,7 +70,6 @@ const subscriptionRow = (s: Subscription): SubscriptionRow => ({
   name: s.name,
   amount: s.amount,
   day: s.day,
-  category: s.category,
   started_at: s.startedAt,
   ended_at: s.endedAt,
 })
@@ -94,7 +93,7 @@ export class SupabaseStore implements DataStore {
       this.db.from('credits').select('id,name,total,remaining,position').order('position'),
       this.db.from('salaries').select('id,name,day,amount').order('day'),
       this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
-      this.db.from('subscriptions').select('id,name,amount,day,category,started_at,ended_at').order('day'),
+      this.db.from('subscriptions').select('id,name,amount,day,started_at,ended_at').order('day'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -128,7 +127,6 @@ export class SupabaseStore implements DataStore {
         name: r.name,
         amount: r.amount,
         day: r.day,
-        category: r.category,
         startedAt: r.started_at,
         endedAt: r.ended_at,
       })),

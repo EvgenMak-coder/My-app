@@ -126,6 +126,19 @@ describe('treasury', () => {
     expect(expenseShares([])).toEqual([])
   })
 
+  it('подписки и развлечения идут отдельными долями', () => {
+    const shares = expenseShares([
+      { kind: 'expense', category: 'subscription', amount: 600 },
+      { kind: 'expense', category: 'fun', amount: 300 },
+      { kind: 'expense', category: 'other', amount: 100 },
+    ])
+    expect(shares.map((s) => [s.category.name, s.percent])).toEqual([
+      ['Подписки', 60],
+      ['Развлечения', 30],
+      ['Прочее', 10],
+    ])
+  })
+
   it('неизвестная категория уходит в «Прочее»', () => {
     expect(expenseShares([{ kind: 'expense', category: 'штаны', amount: 5 }])[0].category.key).toBe('other')
   })

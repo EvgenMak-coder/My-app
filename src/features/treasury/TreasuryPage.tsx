@@ -35,6 +35,7 @@ import {
   nextPayday,
   paidPercent,
   shiftMonth,
+  SUBSCRIPTION_CATEGORY,
 } from '../../game/treasury'
 
 const today = (): string => dayKey(new Date())
@@ -53,7 +54,7 @@ function chargesOf(subscriptions: Subscription[], month: string): Transaction[] 
         id: CHARGE_PREFIX + s.id,
         kind: 'expense' as const,
         amount: s.amount,
-        category: s.category,
+        category: SUBSCRIPTION_CATEGORY.key,
         note: s.name,
         at: new Date(`${date}T12:00:00`).toISOString(),
       },
@@ -328,7 +329,6 @@ interface SubscriptionDraft {
   name: string
   amount: string
   day: string
-  category: string
 }
 
 function SubscriptionFields({ value, onChange }: { value: SubscriptionDraft; onChange: (next: SubscriptionDraft) => void }) {
@@ -362,13 +362,6 @@ function SubscriptionFields({ value, onChange }: { value: SubscriptionDraft; onC
           onChange={(e) => onChange({ ...value, day: e.target.value })}
         />
       </label>
-      <select value={value.category} aria-label="Категория" onChange={(e) => onChange({ ...value, category: e.target.value })}>
-        {EXPENSE_CATEGORIES.map((c) => (
-          <option key={c.key} value={c.key}>
-            {c.glyph} {c.name}
-          </option>
-        ))}
-      </select>
     </>
   )
 }
@@ -377,7 +370,6 @@ const toInput = (v: SubscriptionDraft): SubscriptionInput => ({
   name: v.name,
   amount: Number(v.amount),
   day: Number(v.day),
-  category: v.category,
 })
 
 const draftValid = (v: SubscriptionDraft): boolean =>
@@ -385,10 +377,9 @@ const draftValid = (v: SubscriptionDraft): boolean =>
 
 function SubscriptionRow({ sub, month }: { sub: Subscription; month: string }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState<SubscriptionDraft>({ name: '', amount: '', day: '', category: 'other' })
+  const [draft, setDraft] = useState<SubscriptionDraft>({ name: '', amount: '', day: '' })
   const edit = useAction((store, input: SubscriptionInput) => updateSubscription(store, sub, input))
   const cancel = useAction((store, s: Subscription) => cancelSubscription(store, s))
-  const category = categoryOf('expense', sub.category)
   const now = new Date()
   const isCurrent = month === monthKey(now)
   const date = chargeIn(sub, month)
@@ -407,7 +398,7 @@ function SubscriptionRow({ sub, month }: { sub: Subscription; month: string }) {
   }
 
   const openEditor = () => {
-    setDraft({ name: sub.name, amount: String(sub.amount), day: String(sub.day), category: category.key })
+    setDraft({ name: sub.name, amount: String(sub.amount), day: String(sub.day) })
     setEditing(true)
   }
 
@@ -435,9 +426,6 @@ function SubscriptionRow({ sub, month }: { sub: Subscription; month: string }) {
 
   return (
     <li className={`row wrap subscription${charged ? ' charged' : ''}`}>
-      <span className="glyph-mark" style={{ color: category.color }} title={category.name} aria-hidden="true">
-        {category.glyph}
-      </span>
       <span className="grow">
         {sub.name}
         <small className="muted">{status}</small>
@@ -488,7 +476,7 @@ function ArchivedSubscriptionRow({ sub }: { sub: Subscription }) {
   )
 }
 
-const EMPTY_DRAFT: SubscriptionDraft = { name: '', amount: '', day: '1', category: 'other' }
+const EMPTY_DRAFT: SubscriptionDraft = { name: '', amount: '', day: '1' }
 
 function SubscriptionPanel({ subscriptions, month }: { subscriptions: Subscription[]; month: string }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT)
@@ -519,7 +507,7 @@ function SubscriptionPanel({ subscriptions, month }: { subscriptions: Subscripti
     <Panel title="契 Подписки">
       <p className="muted">
         {monthTitle(month)}: списано {formatMoney(charged)} · ещё спишется {formatMoney(pending)}. В расходы подписка попадает
-        в день списания.
+        в день списания — отдельной долей <span style={{ color: SUBSCRIPTION_CATEGORY.color }}>«{SUBSCRIPTION_CATEGORY.name}»</span>.
       </p>
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'active'} onClick={() => setTab('active')}>
@@ -765,7 +753,6 @@ function Treasury({ snapshot }: { snapshot: Snapshot }) {
                       {category.glyph} {category.name}
                     </span>
                     {t.note && <span className="muted"> — {t.note}</span>}
-                    {t.id.startsWith(CHARGE_PREFIX) && <span className="muted"> · подписка</span>}
                   </span>
                   <span className={`money ${t.kind}`}>
                     {t.kind === 'income' ? '+' : '−'}
@@ -773,7 +760,7 @@ function Treasury({ snapshot }: { snapshot: Snapshot }) {
                   </span>
                   {t.id.startsWith(CHARGE_PREFIX) ? (
                     <span className="auto-mark muted" title="Списание подписки — управляется в «Подписках» ниже" aria-hidden="true">
-                      契
+                      ↻
                     </span>
                   ) : (
                     <button

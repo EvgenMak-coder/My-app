@@ -11,8 +11,12 @@ export const EXPENSE_CATEGORIES: MoneyCategory[] = [
   { key: 'tech', name: 'Техника', glyph: '機', color: '#3f9dff' },
   { key: 'food', name: 'Еда', glyph: '食', color: '#ff7a1a' },
   { key: 'home', name: 'Квартира', glyph: '家', color: '#e6b422' },
+  { key: 'fun', name: 'Развлечения', glyph: '楽', color: '#ff5fa2' },
   { key: 'other', name: 'Прочее', glyph: '他', color: '#8f887c' },
 ]
+
+/** Списания подписок: своя доля в расходах; вручную эту категорию не выбирают */
+export const SUBSCRIPTION_CATEGORY: MoneyCategory = { key: 'subscription', name: 'Подписки', glyph: '契', color: '#22d3c5' }
 
 export const INCOME_CATEGORIES: MoneyCategory[] = [
   { key: 'salary', name: 'Жалованье', glyph: '俸', color: '#2fae7a' },
@@ -20,6 +24,7 @@ export const INCOME_CATEGORIES: MoneyCategory[] = [
 ]
 
 export const categoryOf = (kind: 'income' | 'expense', key: string): MoneyCategory => {
+  if (kind === 'expense' && key === SUBSCRIPTION_CATEGORY.key) return SUBSCRIPTION_CATEGORY
   const list = kind === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
   return list.find((c) => c.key === key) ?? list[list.length - 1]
 }
@@ -130,7 +135,8 @@ export function expenseShares(transactions: { kind: string; category: string; am
     totals.set(key, (totals.get(key) ?? 0) + t.amount)
     sum += t.amount
   }
-  return EXPENSE_CATEGORIES.filter((c) => totals.has(c.key))
+  return [...EXPENSE_CATEGORIES, SUBSCRIPTION_CATEGORY]
+    .filter((c) => totals.has(c.key))
     .map((c) => ({ category: c, amount: totals.get(c.key)!, percent: sum ? (totals.get(c.key)! / sum) * 100 : 0 }))
     .sort((a, b) => b.amount - a.amount)
 }

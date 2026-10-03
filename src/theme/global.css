@@ -1129,13 +1129,6 @@ input.amount {
   color: var(--text-dim);
 }
 
-.glyph-mark {
-  font-size: 1.2rem;
-  width: 1.4em;
-  text-align: center;
-  flex: none;
-}
-
 /* знак на месте кнопки удаления: списание подписки из свитка не убирается */
 .auto-mark {
   min-width: 34px;
