@@ -1,4 +1,5 @@
 import type { ElementKey } from '../theme/appearance'
+import { soundscape } from './sound'
 import { clamp, glowSprite, rand, rgba, type Palette } from './util'
 
 /** Фоновый эффект стихии. Рисует один кадр; w и h — размер экрана в CSS-пикселях. */
@@ -15,49 +16,41 @@ const bell = (): number => ((Math.random() + Math.random() + Math.random()) / 3)
 // ---------- Пламя: огонь по всей нижней кромке, искры и всплески ----------
 
 function fire(p: Palette, power: number): Effect {
-  const glow = glowSprite(p.accent)
+  const heat = glowSprite(p.accent)
+  // частицы трёх температур; белый жар получается сам там, где они густо накладываются друг на друга
+  const TEMPERATURES = [glowSprite(p.bright, 48), glowSprite(p.accent, 48), glowSprite(p.deep, 48)]
   const SPARK_COLORS = ['#ffffff', '#fff1c9', p.bright, p.accent]
 
-  interface Tongue { x: number; width: number; height: number; speed: number; phase: number }
+  interface Emitter { x: number; strength: number; speed: number; phase: number; debt: number }
+  interface Flame { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; seed: number }
   interface Spark { x: number; y: number; vx: number; vy: number; gravity: number; life: number; max: number; size: number; phase: number; color: string }
   interface Flare { x: number; life: number; max: number }
-  let tongues: Tongue[] = []
+  let emitters: Emitter[] = []
   let builtFor = 0
+  const flames: Flame[] = []
   const sparks: Spark[] = []
   const flares: Flare[] = []
   let sparkDebt = 0
   let nextFlare = 1
-
-  const tongue = (ctx: CanvasRenderingContext2D, x: number, base: number, width: number, height: number, sway: number) => {
-    ctx.moveTo(x - width / 2, base)
-    ctx.bezierCurveTo(x - width / 2, base - height * 0.45, x + sway * 0.35 - width * 0.12, base - height * 0.72, x + sway, base - height)
-    ctx.bezierCurveTo(x + sway * 0.35 + width * 0.12, base - height * 0.72, x + width / 2, base - height * 0.45, x + width / 2, base)
-  }
-
-  // слои от тёмной каймы к раскалённой добела сердцевине
-  const LAYERS = [
-    { color: p.deep, alpha: 0.6, scale: 1, blur: 16 },
-    { color: p.accent, alpha: 0.36, scale: 0.72, blur: 11 },
-    { color: p.bright, alpha: 0.24, scale: 0.44, blur: 7 },
-    { color: '#fff6dc', alpha: 0.16, scale: 0.24, blur: 5 },
-  ]
 
   return {
     frame(ctx, w, h, t, dt) {
       ctx.clearRect(0, 0, w, h)
       if (w !== builtFor) {
         builtFor = w
-        // языки распределены по всей ширине, а не собраны в один костёр
-        tongues = Array.from({ length: Math.max(8, Math.round(w / 46)) }, () => ({
-          x: rand(-20, w + 20),
-          width: rand(60, 130),
-          height: rand(0.45, 1),
-          speed: rand(2.2, 4.4),
+        // очаги стоят вдоль всей ширины, у каждого своя сила и ритм
+        const count = Math.max(10, Math.round(w / 28))
+        emitters = Array.from({ length: count }, (_, i) => ({
+          x: ((i + 0.5) / count) * w + rand(-10, 10),
+          strength: rand(0.55, 1),
+          speed: rand(1.6, 3.6),
           phase: rand(0, 6.28),
+          debt: 0,
         }))
       }
-      const tall = Math.min(h * 0.42, 360) * (0.55 + 0.45 * power)
-      const base = h + 8
+      const tall = Math.min(h * 0.45, 380) * (0.55 + 0.45 * power)
+      // на телефоне нижнюю кромку закрывает панель разделов — поднимаем огонь над ней
+      const base = w < 800 ? h - 58 : h + 6
 
       // всплеск: пламя в одном месте взмывает и выбрасывает сноп искр
       nextFlare -= dt
@@ -65,11 +58,12 @@ function fire(p: Palette, power: number): Effect {
         nextFlare = rand(1.2, 3.6) / power
         const x = rand(0, w)
         flares.push({ x, life: 0, max: rand(0.7, 1.3) })
+        soundscape.trigger('flare')
         const burst = Math.round(rand(25, 50) * power)
         for (let i = 0; i < burst; i++) {
           sparks.push({
             x: x + rand(-30, 30),
-            y: h - rand(0, tall * 0.5),
+            y: base - rand(0, tall * 0.5),
             vx: rand(-90, 90),
             vy: -rand(180, 460),
             gravity: 170,
@@ -90,41 +84,56 @@ function fire(p: Palette, power: number): Effect {
 
       // жар вдоль всей кромки
       ctx.globalAlpha = 0.5
-      ctx.drawImage(glow, -w * 0.2, h - tall * 1.1, w * 1.4, tall * 2.2)
-      ctx.globalAlpha = 1
+      ctx.drawImage(heat, -w * 0.2, base - tall * 1.1, w * 1.4, tall * 2.2)
 
-      for (const layer of LAYERS) {
-        const paint = ctx.createLinearGradient(0, base, 0, base - tall * layer.scale * 1.6)
-        paint.addColorStop(0, rgba(layer.color, layer.alpha))
-        paint.addColorStop(0.45, rgba(layer.color, layer.alpha * 0.55))
-        paint.addColorStop(1, rgba(layer.color, 0))
-        ctx.fillStyle = paint
-        // размытие превращает плоские языки в мягкое пламя; где filter не поддержан, остаются чёткие контуры
-        ctx.filter = `blur(${layer.blur}px)`
-        ctx.beginPath()
-        for (const f of tongues) {
-          let boost = 1
-          for (const flare of flares) {
-            const d = (f.x - flare.x) / 140
-            boost += Math.exp(-d * d) * Math.sin((flare.life / flare.max) * Math.PI) * 0.9
-          }
-          // два несовпадающих ритма дают неровное, живое дрожание
-          const flicker = 0.62 + 0.24 * Math.sin(t * f.speed + f.phase) + 0.14 * Math.sin(t * f.speed * 2.7 + f.phase * 1.7)
-          const height = tall * f.height * flicker * layer.scale * boost
-          const width = f.width * (0.55 + 0.45 * layer.scale)
-          const sway = Math.sin(t * 1.7 + f.phase) * width * 0.45
-          tongue(ctx, f.x, base, width, height, sway)
+      const rate = 48 * Math.sqrt(power)
+      for (const e of emitters) {
+        let live = e.strength * (0.6 + 0.28 * Math.sin(t * e.speed + e.phase) + 0.12 * Math.sin(t * e.speed * 2.3 + e.phase * 1.9))
+        for (const flare of flares) {
+          const d = (e.x - flare.x) / 130
+          live += Math.exp(-d * d) * Math.sin((flare.life / flare.max) * Math.PI) * 0.9
         }
-        ctx.fill()
+        e.debt += dt * rate * live
+        while (e.debt >= 1) {
+          e.debt--
+          flames.push({
+            x: e.x + rand(-16, 16),
+            y: base + rand(0, 14),
+            vx: rand(-12, 12),
+            vy: -tall * rand(1, 1.7) * Math.min(1.7, Math.max(0.5, live)),
+            life: 0,
+            max: rand(0.55, 1.1),
+            size: rand(34, 66) * (0.8 + 0.4 * live),
+            seed: rand(0, 6.28),
+          })
+        }
       }
-      ctx.filter = 'none'
+
+      // частица остывает по пути вверх: белая у основания, красная на языке
+      for (let i = flames.length - 1; i >= 0; i--) {
+        const f = flames[i]
+        f.life += dt
+        const k = f.life / f.max
+        if (k >= 1) {
+          flames.splice(i, 1)
+          continue
+        }
+        f.x += (f.vx + Math.sin(t * 3.1 + f.seed + f.y * 0.02) * 22) * dt
+        f.y += f.vy * dt
+        f.vy *= 1 - dt * 0.9
+        // язык сужается кверху и вытянут по вертикали
+        const size = f.size * (1 - k * 0.7)
+        ctx.globalAlpha = (k < 0.08 ? k / 0.08 : 1) * Math.pow(1 - k, 1.1) * 0.3
+        ctx.drawImage(TEMPERATURES[k < 0.3 ? 0 : k < 0.65 ? 1 : 2], f.x - size / 2, f.y - size * 0.85, size, size * 1.7)
+      }
+      ctx.globalAlpha = 1
 
       sparkDebt += dt * 30 * power * (w / 800)
       while (sparkDebt >= 1) {
         sparkDebt--
         sparks.push({
           x: rand(0, w),
-          y: h - rand(0, tall * 0.6),
+          y: base - rand(0, tall * 0.6),
           vx: rand(-22, 22),
           vy: -rand(70, 230),
           gravity: 0,
@@ -407,6 +416,7 @@ function storm(p: Palette, power: number): Effect {
       next -= dt
       if (next <= 0) {
         bolts.push(makeBolt(w, h))
+        soundscape.trigger('thunder')
         // иногда бьёт сразу двумя разрядами
         if (Math.random() < 0.3 * power) bolts.push(makeBolt(w, h))
         next = rand(1.2, 4.2) / power

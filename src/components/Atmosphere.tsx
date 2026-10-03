@@ -1,17 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { EFFECTS } from '../fx/effects'
+import { soundscape } from '../fx/sound'
 import { prefersReducedMotion } from '../fx/util'
 import { paletteOf, powerOf, useAppearance } from '../theme/appearance'
 
 /** Неподвижный слой за всем приложением: свечение стихии, своя картинка и её эффект. */
 export function Atmosphere() {
-  const { element, intensity, background } = useAppearance()
+  const { element, intensity, sound, volume, background } = useAppearance()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     const power = powerOf(intensity)
+    soundscape.setVisuals(power > 0 && !prefersReducedMotion())
     if (power === 0 || prefersReducedMotion()) {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       return
@@ -49,6 +51,8 @@ export function Atmosphere() {
       window.removeEventListener('resize', resize)
     }
   }, [element, intensity])
+
+  useEffect(() => soundscape.configure({ enabled: sound, volume, element }), [sound, volume, element])
 
   return (
     <div className="atmo" aria-hidden="true">

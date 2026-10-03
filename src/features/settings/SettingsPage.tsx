@@ -6,8 +6,11 @@ import {
   setBackground,
   setElement,
   setIntensity,
+  setSound,
+  setVolume,
   useAppearance,
 } from '../../theme/appearance'
+import { soundscape } from '../../fx/sound'
 import { DataGate, Panel } from '../../components/ui'
 import { useAction } from '../../data/hooks'
 import { cloudEnabled, supabase } from '../../data/index'
@@ -24,7 +27,7 @@ function download(snapshot: Snapshot) {
 }
 
 function AppearancePanel() {
-  const { element, intensity, background } = useAppearance()
+  const { element, intensity, sound, volume, background } = useAppearance()
   const [message, setMessage] = useState('')
 
   const onImage = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -61,6 +64,37 @@ function AppearancePanel() {
             {level.name}
           </button>
         ))}
+      </div>
+      <p className="muted">
+        Звук стихии: гроза — гром и дождь, пламя — огонь и далёкая битва, тень — тревожный гул. У крови звука нет.
+      </p>
+      <div className="row wrap">
+        <div className="tabs">
+          <button aria-selected={!sound} onClick={() => setSound(false)}>
+            Тихо
+          </button>
+          <button
+            aria-selected={sound}
+            onClick={() => {
+              // браузер разрешает звук только из самого нажатия
+              soundscape.unlock()
+              setSound(true)
+            }}
+          >
+            Звук
+          </button>
+        </div>
+        <input
+          className="grow"
+          type="range"
+          min={0.05}
+          max={1}
+          step={0.05}
+          value={volume}
+          disabled={!sound}
+          aria-label="Громкость"
+          onChange={(e) => setVolume(Number(e.target.value))}
+        />
       </div>
       <p className="muted">
         Свой фон хранится только на этом устройстве и никуда не отправляется. Лучше всего смотрятся тёмные

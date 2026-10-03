@@ -32,6 +32,10 @@ export const powerOf = (key: IntensityKey): number => INTENSITIES.find((i) => i.
 export interface Appearance {
   element: ElementKey
   intensity: IntensityKey
+  /** звук стихии; по умолчанию выключен */
+  sound: boolean
+  /** громкость 0…1 */
+  volume: number
   /** своя картинка фона (data URL) или null */
   background: string | null
 }
@@ -39,12 +43,19 @@ export interface Appearance {
 const ELEMENT_KEY = 'heavenly-dragon:element'
 const BACKGROUND_KEY = 'heavenly-dragon:background'
 const INTENSITY_KEY = 'heavenly-dragon:intensity'
+const SOUND_KEY = 'heavenly-dragon:sound'
+const VOLUME_KEY = 'heavenly-dragon:volume'
 
 function read(): Appearance {
   let element: ElementKey = 'ember'
   let background: string | null = null
   let intensity: IntensityKey = 'normal'
+  let sound = false
+  let volume = 0.6
   try {
+    sound = localStorage.getItem(SOUND_KEY) === 'on'
+    const savedVolume = Number(localStorage.getItem(VOLUME_KEY))
+    if (savedVolume > 0 && savedVolume <= 1) volume = savedVolume
     const level = localStorage.getItem(INTENSITY_KEY)
     if (INTENSITIES.some((i) => i.key === level)) intensity = level as IntensityKey
     const saved = localStorage.getItem(ELEMENT_KEY)
@@ -53,7 +64,7 @@ function read(): Appearance {
   } catch {
     // хранилище недоступно — остаёмся на значениях по умолчанию
   }
-  return { element, intensity, background }
+  return { element, intensity, sound, volume, background }
 }
 
 let current = read()
@@ -85,6 +96,24 @@ export function setIntensity(intensity: IntensityKey): void {
     // выбор подействует до перезагрузки
   }
   apply({ ...current, intensity })
+}
+
+export function setSound(sound: boolean): void {
+  try {
+    localStorage.setItem(SOUND_KEY, sound ? 'on' : 'off')
+  } catch {
+    // выбор подействует до перезагрузки
+  }
+  apply({ ...current, sound })
+}
+
+export function setVolume(volume: number): void {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume))
+  } catch {
+    // выбор подействует до перезагрузки
+  }
+  apply({ ...current, volume })
 }
 
 /** Бросает ошибку, если картинка не поместилась в хранилище. */

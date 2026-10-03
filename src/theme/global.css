@@ -182,12 +182,21 @@ p {
     left: 0;
     right: 0;
     bottom: 0;
-    height: var(--nav-size);
+    /* полоска «домой» на iPhone лежит поверх экрана — панель становится выше ровно на её высоту */
+    height: calc(var(--nav-size) + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
     overflow-x: auto;
     scrollbar-width: none;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-    gap: 4px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    gap: 6px;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .main {
+    padding-bottom: calc(var(--nav-size) + env(safe-area-inset-bottom) + 24px);
   }
 
   .nav a {
@@ -197,6 +206,8 @@ p {
     padding: 4px 10px;
     min-width: 64px;
     justify-content: center;
+    /* пункты не сжимаются и не слипаются — панель листается вбок */
+    flex: none;
   }
 
   .nav a.active::after {
