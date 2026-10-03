@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
 import { DataGate, formatDate, Panel } from '../../components/ui'
-import { Vessel } from '../../components/Vessel'
+import { CoinIcon, Talisman } from '../../components/Talisman'
 import { changeGoalProgress, completeGoal, createGoal, restoreGoal } from '../../data/actions'
 import { useAction } from '../../data/hooks'
 import type { Goal, Snapshot } from '../../data/types'
@@ -13,11 +13,11 @@ function GoalCard({ goal }: { goal: Goal }) {
   const remove = useAction((store, id: string) => store.deleteGoal(id))
 
   return (
-    <li className="goal" style={{ '--liquid': goal.color } as CSSProperties}>
-      <div className="goal-vessel">
-        <Vessel shape={level.key} progress={goal.progress} color={goal.color} />
+    <li className="goal" style={{ '--cord': goal.color } as CSSProperties}>
+      <div className="goal-talisman">
+        <Talisman coins={level.coins} progress={goal.progress} color={goal.color} />
         <span className="goal-percent num">{goal.progress}%</span>
-        {/* левая половина сосуда убавляет, правая прибавляет */}
+        {/* левая половина талисмана убавляет, правая прибавляет */}
         <button
           className="goal-tap minus"
           aria-label={`Убавить «${goal.title}» на ${GOAL_STEP}%`}
@@ -56,6 +56,8 @@ function GoalCard({ goal }: { goal: Goal }) {
   )
 }
 
+const coinsLabel = (n: number): string => `${n} ${n === 1 ? 'монета' : n < 5 ? 'монеты' : 'монет'}`
+
 function AddGoal({ position }: { position: number }) {
   const [title, setTitle] = useState('')
   const [level, setLevel] = useState(3)
@@ -85,7 +87,7 @@ function AddGoal({ position }: { position: number }) {
         <select value={level} onChange={(e) => setLevel(Number(e.target.value))} aria-label="Уровень важности">
           {GOAL_LEVELS.map((l, i) => (
             <option key={l.key} value={i}>
-              {l.glyph} {l.name}
+              {l.glyph} {l.name} · {coinsLabel(l.coins)}
             </option>
           ))}
         </select>
@@ -94,8 +96,8 @@ function AddGoal({ position }: { position: number }) {
         </button>
       </div>
       <div className="row wrap">
-        <span className="muted">Жидкость:</span>
-        <div className="swatches" role="radiogroup" aria-label="Цвет жидкости">
+        <span className="muted">Шнур:</span>
+        <div className="swatches" role="radiogroup" aria-label="Цвет шнура">
           {GOAL_COLORS.map((c) => (
             <button
               key={c}
@@ -124,9 +126,9 @@ function Archive({ goals }: { goals: Goal[] }) {
       {goals.map((g) => {
         const level = levelOf(g.level)
         return (
-          <li key={g.id} className="row wrap archive-row" style={{ '--liquid': g.color } as CSSProperties}>
-            <span className="archive-vessel">
-              <Vessel shape={level.key} progress={100} color={g.color} />
+          <li key={g.id} className="row wrap archive-row">
+            <span className="archive-coin">
+              <CoinIcon />
             </span>
             <span className="grow">
               {g.title}
@@ -181,7 +183,7 @@ function Goals({ snapshot }: { snapshot: Snapshot }) {
           </Panel>
 
           {active.length === 0 && (
-            <p className="muted">Целей пока нет. Нажатие на правую половину сосуда прибавляет {GOAL_STEP}%, на левую — убавляет.</p>
+            <p className="muted">Целей пока нет. Нажатие на правую половину талисмана прибавляет {GOAL_STEP}%, на левую — убавляет.</p>
           )}
 
           {GOAL_LEVELS.map((level, i) => {
@@ -192,7 +194,9 @@ function Goals({ snapshot }: { snapshot: Snapshot }) {
                 <h2>
                   {level.glyph} {level.name}
                 </h2>
-                <p className="muted">{level.hint}</p>
+                <p className="muted">
+                  {level.hint} · {coinsLabel(level.coins)}
+                </p>
                 <ul className="goals">
                   {goals.map((g) => (
                     <GoalCard key={g.id} goal={g} />

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { coinGlow, GOAL_LEVELS } from './goals'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
 import {
@@ -108,6 +109,22 @@ describe('titans', () => {
   it('среднее по титанам округляется, как в Excel', () => {
     expect(averageTitan([25, 45, 30, 10, 20].map((value) => ({ value })))).toBe(26)
     expect(averageTitan([])).toBe(0)
+  })
+})
+
+describe('goals', () => {
+  it('чем важнее цель, тем больше монет: от пяти до одной', () => {
+    expect(GOAL_LEVELS.map((l) => l.coins)).toEqual([5, 4, 3, 2, 1])
+  })
+
+  it('зажигает монеты по очереди, последнюю — частично', () => {
+    expect(coinGlow(0, 5)).toEqual([0, 0, 0, 0, 0])
+    expect(coinGlow(50, 5)).toEqual([1, 1, 0.5, 0, 0])
+    expect(coinGlow(100, 3)).toEqual([1, 1, 1])
+    expect(coinGlow(250, 2)).toEqual([1, 1])
+    // 5% звёздной цели — четверть первой монеты, 5% речной — двадцатая часть единственной
+    expect(coinGlow(5, 5)[0]).toBeCloseTo(0.25)
+    expect(coinGlow(5, 1)[0]).toBeCloseTo(0.05)
   })
 })
 
