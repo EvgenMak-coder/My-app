@@ -487,11 +487,13 @@ input[type='range'] {
   color: var(--accent-bright);
 }
 
-/* холст дракона: пропорции совпадают со сценой 360×300 из fx/dragon.ts */
+/* холст дракона; края растворяются, чтобы длинный хвост уходил в темноту, а не обрезался по рамке */
 .dragon {
   display: block;
   width: 100%;
   height: clamp(260px, 46vh, 460px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
 }
 
 /* колесо жизни: крупный радар и ползунки сфер рядом */

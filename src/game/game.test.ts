@@ -52,16 +52,16 @@ describe('stageProgress', () => {
   it.each([
     [0, 'egg'],
     [99, 'egg'],
-    [100, 'hatchling'],
-    [299, 'hatchling'],
-    [300, 'serpent'],
-    [700, 'horned'],
-    [1500, 'young'],
-    [3000, 'river'],
-    [5000, 'mountain'],
-    [8000, 'ancient'],
-    [11999, 'ancient'],
-    [12000, 'celestial'],
+    [100, 'hui'],
+    [299, 'hui'],
+    [300, 'hui-elder'],
+    [700, 'jiao'],
+    [1500, 'jiao-elder'],
+    [3000, 'long'],
+    [5000, 'long-elder'],
+    [8000, 'jiaolong'],
+    [11999, 'jiaolong'],
+    [12000, 'yinglong'],
   ])('%i опыта → %s', (xp, key) => {
     expect(stageProgress(xp).stage.key).toBe(key)
   })
