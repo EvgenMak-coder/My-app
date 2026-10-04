@@ -1,18 +1,21 @@
 import {
   ACESFilmicToneMapping,
   Color,
-  CylinderGeometry,
+  DoubleSide,
   Fog,
   Group,
   HemisphereLight,
+  LatheGeometry,
   Mesh,
   MeshStandardMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
   PMREMGenerator,
   PointLight,
   Scene,
   SpotLight,
   TorusGeometry,
+  Vector2,
   WebGLRenderer,
 } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
@@ -24,10 +27,10 @@ type MaterialKey = Material['key']
 
 /** Из чего отлита статуэтка: основной тон, тёмный тон для ткани и оружия, блеск. */
 const CAST: Record<MaterialKey, { color: number; accent: number; metalness: number; roughness: number; glow: number }> = {
-  wood: { color: 0x9a6a3e, accent: 0x5a3a20, metalness: 0, roughness: 0.78, glow: 0 },
-  bronze: { color: 0xb87a3d, accent: 0x6e4722, metalness: 1, roughness: 0.42, glow: 0 },
-  silver: { color: 0xd5dae2, accent: 0x7e8791, metalness: 1, roughness: 0.3, glow: 0 },
-  gold: { color: 0xf5c451, accent: 0xa87418, metalness: 1, roughness: 0.26, glow: 0 },
+  wood: { color: 0xa5713f, accent: 0x5e3b1f, metalness: 0, roughness: 0.72, glow: 0 },
+  bronze: { color: 0xc07f3f, accent: 0x74481f, metalness: 1, roughness: 0.4, glow: 0 },
+  silver: { color: 0xdde1e8, accent: 0x858e99, metalness: 1, roughness: 0.3, glow: 0 },
+  gold: { color: 0xf7c650, accent: 0xb07a17, metalness: 1, roughness: 0.27, glow: 0 },
   // нефрит не металл: гладкий камень, слегка светится изнутри
   jade: { color: 0x45c08a, accent: 0x1d6e52, metalness: 0.15, roughness: 0.2, glow: 0x0b3a28 },
 }
@@ -79,6 +82,9 @@ export class TitanStage {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     this.renderer.toneMapping = ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.15
+    // тени от собственных деталей — без них складки и доспех выглядят плоско
+    this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = PCFSoftShadowMap
 
     // отражения для металла: без окружения бронза и золото выглядят чёрными
     const pmrem = new PMREMGenerator(this.renderer)
@@ -95,6 +101,12 @@ export class TitanStage {
     const key = new SpotLight(0xfff1dd, 70, 14, 0.42, 0.6, 1.4)
     key.position.set(1.6, 4.4, 5)
     key.target.position.set(0, 1, RADIUS)
+    key.castShadow = true
+    key.shadow.mapSize.set(1024, 1024)
+    key.shadow.camera.near = 2
+    key.shadow.camera.far = 12
+    key.shadow.bias = -0.0008
+    key.shadow.normalBias = 0.015
     this.scene.add(key, key.target)
     // контровой свет цветом стихии — из центра круга, в спину выбранной статуэтке
     this.rim = new PointLight(new Color(accent), 22, 9, 1.6)
@@ -127,19 +139,25 @@ export class TitanStage {
 
   private build(specs: StatueSpec[]): void {
     this.clear()
-    const stone = new MeshStandardMaterial({ color: 0x15131a, roughness: 0.9, metalness: 0.1, flatShading: true })
+    const stone = new MeshStandardMaterial({ color: 0x1b1820, roughness: 0.8, metalness: 0.2 })
+    // постамент: ступень с фаской и валиком
+    const plinth = new LatheGeometry(
+      [[0.001, 0], [0.6, 0], [0.61, 0.025], [0.56, 0.05], [0.56, 0.065], [0.52, 0.085], [0.5, 0.1], [0.001, 0.1]].map(([r, y]) => new Vector2(r, y)),
+      40,
+    )
     const step = (Math.PI * 2) / Math.max(1, specs.length)
     specs.forEach((spec, i) => {
+      // двусторонние: плащи и складки ткани — тонкие поверхности, их видно с изнанки
       const materials: StatueMaterials = {
-        main: new MeshStandardMaterial({ flatShading: true }),
-        accent: new MeshStandardMaterial({ flatShading: true }),
+        main: new MeshStandardMaterial({ side: DoubleSide }),
+        accent: new MeshStandardMaterial({ side: DoubleSide }),
       }
       const ring = new MeshStandardMaterial({ color: 0x000000, emissive: this.rim.color, emissiveIntensity: 0 })
       const holder = new Group()
       holder.position.set(Math.sin(i * step) * RADIUS, 0, Math.cos(i * step) * RADIUS)
       holder.rotation.y = i * step
-      const base = new Mesh(new CylinderGeometry(0.5, 0.56, 0.1, 24), stone)
-      base.position.y = 0.05
+      const base = new Mesh(plinth, stone)
+      base.receiveShadow = true
       const glow = new Mesh(new TorusGeometry(0.5, 0.012, 6, 40), ring)
       glow.rotation.x = Math.PI / 2
       glow.position.y = 0.1

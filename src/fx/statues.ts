@@ -1,25 +1,31 @@
 import {
-  BoxGeometry,
   Box3,
+  BoxGeometry,
+  BufferGeometry,
   CatmullRomCurve3,
   ConeGeometry,
   CylinderGeometry,
+  ExtrudeGeometry,
+  Float32BufferAttribute,
   Group,
-  IcosahedronGeometry,
+  LatheGeometry,
   Mesh,
   MeshStandardMaterial,
+  Shape,
   SphereGeometry,
   TorusGeometry,
   TubeGeometry,
+  Vector2,
   Vector3,
-  type BufferGeometry,
   type Object3D,
 } from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 /**
- * Статуэтки титанов — низкополигональные фигуры, собранные кодом из простых тел.
+ * Статуэтки титанов — фигуры, вылепленные кодом из тел вращения, складок ткани и выдавленных пластин.
  * Каждая отлита из одного материала в двух тонах: main — тело и доспех, accent — ткань, волосы, оружие.
  * Узнаётся фигура по силуэту: у каждой свой крупный признак (щит и гребень, секира, три меча, шляпа и плащ).
+ * После сборки все детали сплавляются в две сетки (по одной на тон) — так телефону легче их рисовать.
  */
 export interface StatueMaterials {
   main: MeshStandardMaterial
@@ -29,10 +35,93 @@ export interface StatueMaterials {
 type V3 = [number, number, number]
 
 const RAD = Math.PI / 180
+const TURN = Math.PI * 2
 
-const cyl = (top: number, bottom: number, height: number, sides = 8): CylinderGeometry =>
-  new CylinderGeometry(top, bottom, height, sides)
+const ball = (radius: number): SphereGeometry => new SphereGeometry(radius, 14, 10)
 const box = (w: number, h: number, d: number): BoxGeometry => new BoxGeometry(w, h, d)
+const tube = (top: number, bottom: number, height: number, sides = 12): CylinderGeometry =>
+  new CylinderGeometry(top, bottom, height, sides)
+
+/** Тело вращения по профилю: пары «радиус, высота» снизу вверх. */
+function lathe(profile: [number, number][], sides = 16): LatheGeometry {
+  return new LatheGeometry(
+    profile.map(([r, y]) => new Vector2(Math.max(r, 0.0005), y)),
+    sides,
+  )
+}
+
+/** Конечность: свисает вниз от сустава, радиусы заданы через равные промежутки — так получаются мышцы. */
+function limb(radii: number[], length: number): LatheGeometry {
+  const last = radii.length - 1
+  // профиль идёт снизу вверх, от кисти к плечу
+  return lathe(radii.map((r, i): [number, number] => [r, -(length * i) / last]).reverse(), 12)
+}
+
+/**
+ * Ткань: воронка от верхнего края вниз, с вертикальными складками, которые расходятся к подолу.
+ * arc меньше полного круга даёт плащ; from — где складки начинаются (0 — спереди, π — со спины).
+ */
+function drape(
+  top: number,
+  bottom: number,
+  height: number,
+  o: { arc?: number; from?: number; folds?: number; depth?: number } = {},
+): BufferGeometry {
+  const arc = o.arc ?? TURN
+  const from = o.from ?? 0
+  const folds = o.folds ?? 8
+  const depth = o.depth ?? 0.07
+  const rows = 7
+  const cols = Math.max(8, Math.round((folds * 5 * arc) / TURN))
+  const positions: number[] = []
+  const indices: number[] = []
+  for (let row = 0; row <= rows; row++) {
+    const v = row / rows
+    const radius = top + (bottom - top) * Math.pow(v, 0.85)
+    for (let col = 0; col <= cols; col++) {
+      const a = from + (arc * col) / cols
+      const r = radius * (1 + depth * v * Math.sin(a * folds))
+      positions.push(Math.sin(a) * r, -height * v, Math.cos(a) * r)
+    }
+  }
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const a = row * (cols + 1) + col
+      const b = a + cols + 1
+      indices.push(a, b, a + 1, b, b + 1, a + 1)
+    }
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+  geometry.setIndex(indices)
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+/** Пластина по контуру (x, y) заданной толщины, с серединой в плоскости z = 0. */
+function plate(points: [number, number][], thickness: number): ExtrudeGeometry {
+  const shape = new Shape()
+  points.forEach(([x, y], i) => (i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y)))
+  shape.closePath()
+  const geometry = new ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false })
+  geometry.translate(0, 0, -thickness / 2)
+  return geometry
+}
+
+/** Клинок вдоль +x: curve — насколько он выгнут, как у катаны; остриё сведено к обуху. */
+function bladeShape(length: number, width: number, curve: number): [number, number][] {
+  const steps = 10
+  const bow = (t: number): number => curve * 4 * t * (1 - t)
+  const edge: [number, number][] = []
+  const spine: [number, number][] = []
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    edge.push([length * t, -width / 2 + bow(t)])
+    // последние 8% длины — скос к острию
+    if (t <= 0.92) spine.push([length * t, width / 2 + bow(t)])
+  }
+  return [...edge, ...spine.reverse()]
+}
 
 function add(
   parent: Object3D,
@@ -61,6 +150,11 @@ function joint(parent: Object3D, at: V3, turn: V3 = [0, 0, 0]): Group {
 /** Поворот сустава в градусах */
 const pose = (g: Group, x: number, y = 0, z = 0): void => void g.rotation.set(x * RAD, y * RAD, z * RAD)
 
+/** Одинаковые детали по полному кругу: build получает опору, повёрнутую на свой угол. */
+function around(parent: Object3D, at: V3, count: number, build: (spoke: Group, i: number) => void, from = 0): void {
+  for (let i = 0; i < count; i++) build(joint(parent, at, [0, from + (360 * i) / count, 0]), i)
+}
+
 interface Limb {
   root: Group
   mid: Group
@@ -78,67 +172,118 @@ interface Rig {
   legL: Limb
   legR: Limb
   feet: Mesh[]
+  /** множитель ширины: телосложение */
+  b: number
 }
 
 /**
- * Манекен: таз, корпус, голова, руки и ноги на суставах. Рука и нога в покое висят вниз.
+ * Манекен: таз, корпус, голова с лицом, руки и ноги на суставах. Рука и нога в покое висят вниз.
  * Знаки поворотов: плечо и бедро x < 0 — вперёд; локоть x < 0 — сгиб вперёд; колено x > 0 — сгиб назад;
  * z > 0 отводит левую конечность в сторону, z < 0 — правую.
  */
-function rig(m: StatueMaterials, bulk = 1): Rig {
+function rig(m: StatueMaterials, b = 1): Rig {
   const root = new Group()
   const feet: Mesh[] = []
-  const hips = joint(root, [0, 0.98, 0])
-  add(hips, cyl(0.17 * bulk, 0.15 * bulk, 0.2), m.main, [0, 0.02, 0], [0, 0, 0], [1, 1, 0.68])
+  const hips = joint(root, [0, 1.0, 0])
+  add(hips, lathe([[0.05, -0.13], [0.13 * b, -0.08], [0.165 * b, 0], [0.155 * b, 0.08], [0.14 * b, 0.15]]), m.main, [0, 0, 0], [0, 0, 0], [1, 1, 0.7])
   const chest = joint(hips, [0, 0.12, 0])
-  add(chest, cyl(0.21 * bulk, 0.155 * bulk, 0.44), m.main, [0, 0.22, 0], [0, 0, 0], [1, 1, 0.66])
-  add(chest, cyl(0.055, 0.065, 0.1, 6), m.main, [0, 0.49, 0])
-  const head = joint(chest, [0, 0.61, 0])
-  add(head, new IcosahedronGeometry(0.115, 1), m.main, [0, 0, 0], [0, 0, 0], [0.92, 1.12, 1])
+  // корпус: талия, грудная клетка, скат плеч и шея одним телом
+  add(
+    chest,
+    lathe([[0.14 * b, 0], [0.15 * b, 0.07], [0.17 * b, 0.17], [0.205 * b, 0.3], [0.21 * b, 0.38], [0.17 * b, 0.45], [0.075, 0.5], [0.055, 0.57]]),
+    m.main,
+    [0, 0, 0],
+    [0, 0, 0],
+    [1, 1, 0.66],
+  )
+  // грудные мышцы и лопатки
+  add(chest, ball(0.09 * b), m.main, [0.09 * b, 0.33, 0.085], [0, 0, 0], [1.1, 0.8, 0.5])
+  add(chest, ball(0.09 * b), m.main, [-0.09 * b, 0.33, 0.085], [0, 0, 0], [1.1, 0.8, 0.5])
+  add(chest, ball(0.1 * b), m.main, [0.085 * b, 0.34, -0.08], [0, 0, 0], [1, 1, 0.45])
+  add(chest, ball(0.1 * b), m.main, [-0.085 * b, 0.34, -0.08], [0, 0, 0], [1, 1, 0.45])
+
+  const head = joint(chest, [0, 0.64, 0])
+  add(head, ball(0.105), m.main, [0, 0, 0], [0, 0, 0], [0.9, 1.1, 1])
+  add(head, ball(0.08), m.main, [0, -0.065, 0.018], [0, 0, 0], [0.86, 0.78, 0.95])
+  add(head, box(0.024, 0.05, 0.034), m.main, [0, -0.018, 0.098], [-18, 0, 0])
+  add(head, box(0.13, 0.02, 0.04), m.main, [0, 0.03, 0.08])
+  add(head, ball(0.024), m.main, [0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
+  add(head, ball(0.024), m.main, [-0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
 
   const arm = (side: 1 | -1): Limb => {
-    const shoulder = joint(chest, [0.235 * bulk * side, 0.4, 0])
-    add(shoulder, new IcosahedronGeometry(0.078 * bulk, 0), m.main)
-    add(shoulder, cyl(0.062 * bulk, 0.05 * bulk, 0.3, 6), m.main, [0, -0.15, 0])
+    const shoulder = joint(chest, [0.225 * b * side, 0.4, 0])
+    add(shoulder, ball(0.083 * b), m.main, [0, 0, 0], [0, 0, 0], [1, 1.05, 1])
+    add(shoulder, limb([0.062 * b, 0.07 * b, 0.058 * b, 0.048 * b], 0.3), m.main)
     const elbow = joint(shoulder, [0, -0.3, 0])
-    add(elbow, cyl(0.05 * bulk, 0.038 * bulk, 0.27, 6), m.main, [0, -0.135, 0])
+    add(elbow, ball(0.048 * b), m.main)
+    add(elbow, limb([0.048 * b, 0.055 * b, 0.042 * b, 0.034 * b], 0.27), m.main)
     const hand = joint(elbow, [0, -0.27, 0])
-    add(hand, box(0.07, 0.09, 0.045), m.main, [0, -0.04, 0])
+    // кисть сжата в кулак, сбоку большой палец
+    add(hand, ball(0.046), m.main, [0, -0.045, 0], [0, 0, 0], [0.82, 1.15, 0.72])
+    add(hand, ball(0.02), m.main, [0.03 * side, -0.035, 0.022], [0, 0, 0], [0.8, 1.4, 0.8])
     return { root: shoulder, mid: elbow, end: hand }
   }
   const leg = (side: 1 | -1): Limb => {
-    const hip = joint(hips, [0.095 * bulk * side, -0.06, 0])
-    add(hip, cyl(0.088 * bulk, 0.065 * bulk, 0.45, 6), m.main, [0, -0.225, 0])
+    const hip = joint(hips, [0.095 * b * side, -0.06, 0])
+    add(hip, limb([0.092 * b, 0.097 * b, 0.08 * b, 0.062 * b], 0.45), m.main)
     const knee = joint(hip, [0, -0.45, 0])
-    add(knee, cyl(0.062 * bulk, 0.045 * bulk, 0.4, 6), m.main, [0, -0.2, 0])
+    add(knee, ball(0.06 * b), m.main)
+    add(knee, limb([0.058 * b, 0.07 * b, 0.05 * b, 0.04 * b], 0.4), m.main)
     const ankle = joint(knee, [0, -0.4, 0])
-    feet.push(add(ankle, box(0.095, 0.07, 0.24), m.main, [0, -0.035, 0.06]))
+    feet.push(add(ankle, ball(0.06), m.main, [0, -0.035, 0.065], [0, 0, 0], [0.82, 0.62, 2]))
+    add(ankle, ball(0.045), m.main, [0, -0.02, -0.02])
     return { root: hip, mid: knee, end: ankle }
   }
-  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), feet }
+  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), feet, b }
 }
 
-/** Ставит фигуру ступнями на землю, какой бы ни была поза. */
-function ground(r: Rig): Group {
+/** Ставит фигуру ступнями на землю и сплавляет все детали в две сетки — по одной на тон материала. */
+function finish(r: Rig, m: StatueMaterials, size = 1): Group {
   r.root.updateMatrixWorld(true)
   const bounds = new Box3()
   for (const foot of r.feet) bounds.expandByObject(foot)
   r.root.position.y -= bounds.min.y
-  return r.root
+  r.root.scale.setScalar(size)
+  r.root.updateMatrixWorld(true)
+
+  const statue = new Group()
+  for (const material of [m.main, m.accent]) {
+    const parts: BufferGeometry[] = []
+    r.root.traverse((object) => {
+      if (!(object instanceof Mesh) || object.material !== material) return
+      const part: BufferGeometry = object.geometry.index ? object.geometry.toNonIndexed() : object.geometry.clone()
+      part.applyMatrix4(object.matrixWorld)
+      for (const name of Object.keys(part.attributes)) {
+        if (name !== 'position' && name !== 'normal') part.deleteAttribute(name)
+      }
+      parts.push(part)
+      object.geometry.dispose()
+    })
+    if (!parts.length) continue
+    const cast = new Mesh(mergeGeometries(parts), material)
+    cast.castShadow = true
+    cast.receiveShadow = true
+    statue.add(cast)
+    for (const part of parts) part.dispose()
+  }
+  return statue
 }
 
-/** Клинок вдоль +z от кисти: полоса, гарда и рукоять. */
-function sword(hand: Object3D, m: StatueMaterials, length: number, turn: V3 = [0, 0, 0]): Group {
+/** Меч в кулаке, клинок вдоль +z: полоса, гарда, оплетённая рукоять с навершием. */
+function sword(hand: Object3D, m: StatueMaterials, length: number, turn: V3, curve = 0.035): Group {
   const g = joint(hand, [0, -0.05, 0], turn)
-  add(g, box(0.012, 0.036, length), m.accent, [0, 0, 0.05 + length / 2])
-  add(g, cyl(0.042, 0.042, 0.012, 8), m.main, [0, 0, 0.045], [90, 0, 0])
-  add(g, box(0.022, 0.03, 0.2), m.accent, [0, 0, -0.06])
+  add(g, plate(bladeShape(length, 0.034, length * curve), 0.009), m.accent, [0, 0, 0.05], [0, -90, 0])
+  add(g, tube(0.046, 0.046, 0.012, 10), m.main, [0, 0, 0.045], [90, 0, 0])
+  add(g, tube(0.017, 0.015, 0.22, 8), m.accent, [0, 0, -0.07], [90, 0, 0])
+  for (let i = 0; i < 4; i++) add(g, new TorusGeometry(0.018, 0.005, 4, 8), m.main, [0, 0, -0.02 - i * 0.045])
+  add(g, ball(0.02), m.main, [0, 0, -0.185])
   return g
 }
 
 /** Спартанец-гоплит: коринфский шлем с поперечным гребнем, круглый щит, копьё хватом сверху. */
 function spartan(m: StatueMaterials): Group {
   const r = rig(m, 1.12)
+  const b = r.b
   pose(r.legL.root, -18, 0, 4)
   pose(r.legL.mid, 14)
   pose(r.legR.root, 14, 0, -6)
@@ -150,41 +295,91 @@ function spartan(m: StatueMaterials): Group {
   pose(r.armR.root, 0, 0, -100)
   pose(r.armR.mid, 0, 0, -90)
 
-  // кираса, птеруги, поножи, плащ
-  add(r.chest, cyl(0.25, 0.19, 0.46), m.accent, [0, 0.22, 0], [0, 0, 0], [1, 1, 0.7])
-  add(r.hips, cyl(0.2, 0.28, 0.24, 10), m.accent, [0, -0.06, 0], [0, 0, 0], [1, 1, 0.76])
-  add(r.legL.mid, cyl(0.08, 0.058, 0.36, 6), m.accent, [0, -0.19, 0])
-  add(r.legR.mid, cyl(0.08, 0.058, 0.36, 6), m.accent, [0, -0.19, 0])
-  add(r.chest, box(0.48, 0.92, 0.035), m.accent, [0, -0.02, -0.18], [8, 0, 0])
+  // анатомическая кираса с грудными пластинами и наплечными ремнями
+  add(
+    r.chest,
+    lathe([[0.16 * b, -0.01], [0.172 * b, 0.07], [0.19 * b, 0.17], [0.222 * b, 0.3], [0.228 * b, 0.38], [0.2 * b, 0.44], [0.12 * b, 0.475]]),
+    m.accent,
+    [0, 0, 0],
+    [0, 0, 0],
+    [1, 1, 0.7],
+  )
+  add(r.chest, ball(0.095 * b), m.accent, [0.09 * b, 0.33, 0.105], [0, 0, 0], [1.1, 0.82, 0.5])
+  add(r.chest, ball(0.095 * b), m.accent, [-0.09 * b, 0.33, 0.105], [0, 0, 0], [1.1, 0.82, 0.5])
+  add(r.chest, box(0.012, 0.2, 0.012), m.main, [0, 0.14, 0.132 * b])
+  add(r.chest, box(0.07, 0.03, 0.34), m.main, [0.13 * b, 0.465, 0], [0, 0, -12])
+  add(r.chest, box(0.07, 0.03, 0.34), m.main, [-0.13 * b, 0.465, 0], [0, 0, 12])
+  add(r.hips, new TorusGeometry(0.168 * b, 0.022, 6, 16), m.main, [0, 0.12, 0], [90, 0, 0], [1, 0.72, 1])
 
-  // шлем: купол, наносник, нащёчники и поперечный гребень
-  add(r.head, new SphereGeometry(0.13, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.62), m.accent, [0, 0.01, 0], [0, 0, 0], [0.95, 1.1, 1.05])
-  add(r.head, box(0.022, 0.11, 0.022), m.accent, [0, -0.03, 0.125])
-  add(r.head, box(0.03, 0.12, 0.08), m.accent, [0.088, -0.075, 0.065])
-  add(r.head, box(0.03, 0.12, 0.08), m.accent, [-0.088, -0.075, 0.065])
-  add(r.head, new CylinderGeometry(0.21, 0.21, 0.035, 14, 1, false, Math.PI / 2, Math.PI), m.main, [0, 0.1, 0], [90, 0, 0])
+  // птеруги: два ряда кожаных полос по подолу и короткие — на плечах
+  around(r.hips, [0, 0.08, 0], 14, (spoke) => void add(spoke, box(0.066, 0.2, 0.014), m.accent, [0, -0.1, 0.165 * b], [-13, 0, 0]))
+  around(r.hips, [0, 0.08, 0], 14, (spoke) => void add(spoke, box(0.06, 0.29, 0.012), m.main, [0, -0.14, 0.15 * b], [-9, 0, 0]), 13)
+  for (const arm of [r.armL, r.armR]) {
+    around(arm.root, [0, 0.01, 0], 7, (spoke) => void add(spoke, box(0.045, 0.13, 0.012), m.accent, [0, -0.06, 0.09 * b], [-16, 0, 0]))
+  }
 
-  // аспис: выпуклый круг с ободом и личной эмблемой вместо киношной лямбды
-  // щит сдвинут к левому плечу и развёрнут, чтобы не закрывать фигуру
+  // поножи с наколенником
+  for (const leg of [r.legL, r.legR]) {
+    add(leg.mid, limb([0.066 * b, 0.08 * b, 0.06 * b, 0.05 * b], 0.36), m.accent, [0, -0.02, 0.004])
+    add(leg.mid, ball(0.07 * b), m.accent, [0, 0, 0.012], [0, 0, 0], [1, 1.1, 0.9])
+    add(leg.end, new TorusGeometry(0.05, 0.012, 5, 10), m.accent, [0, 0, 0], [90, 0, 0])
+  }
+
+  // плащ со складками, заколот на плечах
+  add(r.chest, drape(0.21 * b, 0.4, 1.02, { arc: 2.7, from: Math.PI - 1.35, folds: 9, depth: 0.11 }), m.accent, [0, 0.47, -0.02], [6, 0, 0])
+  add(r.chest, ball(0.03), m.main, [0.15 * b, 0.47, 0.06])
+  add(r.chest, ball(0.03), m.main, [-0.15 * b, 0.47, 0.06])
+
+  // коринфский шлем: купол, наносник, нащёчники с прорезью, назатыльник и поперечный гребень
+  add(r.head, new SphereGeometry(0.128, 16, 8, 0, TURN, 0, Math.PI * 0.5), m.accent, [0, 0.005, 0], [0, 0, 0], [0.96, 1.12, 1.06])
+  add(r.head, box(0.02, 0.1, 0.02), m.accent, [0, -0.045, 0.128])
+  for (const side of [1, -1]) {
+    add(r.head, new CylinderGeometry(0.128, 0.118, 0.13, 8, 1, true, side > 0 ? 0.12 : -1.95, 1.83), m.accent, [0, -0.105, 0.004], [0, 0, 0], [0.96, 1, 1.06])
+  }
+  add(r.head, new CylinderGeometry(0.128, 0.14, 0.11, 8, 1, true, Math.PI - 1.2, 2.4), m.accent, [0, -0.05, 0.004], [0, 0, 0], [0.96, 1, 1.06])
+  add(r.head, new TorusGeometry(0.126, 0.008, 4, 18), m.main, [0, 0.005, 0.004], [90, 0, 0], [0.96, 1.06, 1])
+  add(r.head, box(0.34, 0.03, 0.04), m.accent, [0, 0.14, 0])
+  add(r.head, new CylinderGeometry(0.23, 0.23, 0.03, 20, 1, false, Math.PI / 2, Math.PI), m.main, [0, 0.14, 0], [90, 0, 0])
+  // пряди конского волоса на гребне
+  for (let i = 0; i < 11; i++) {
+    const a = -80 + i * 16
+    add(r.head, box(0.012, 0.1, 0.04), m.accent, [Math.sin(a * RAD) * 0.185, 0.14 + Math.cos(a * RAD) * 0.185, 0], [0, 0, -a])
+  }
+
+  // аспис: выпуклый круг с ободом и личной эмблемой-солнцем вместо киношной лямбды
   const shield = joint(r.chest, [0.4, 0.12, 0.2], [0, 32, 0])
   shield.scale.setScalar(0.86)
   const dome = joint(shield, [0, 0, 0], [90, 0, 0])
-  add(dome, new SphereGeometry(0.75, 20, 4, 0, Math.PI * 2, 0, 0.6), m.main, [0, -0.62, 0])
-  add(shield, new TorusGeometry(0.42, 0.024, 6, 20), m.accent)
-  add(shield, new TorusGeometry(0.2, 0.016, 5, 16), m.accent, [0, 0, 0.1])
-  add(shield, new IcosahedronGeometry(0.05, 0), m.accent, [0, 0, 0.125])
+  add(dome, new SphereGeometry(0.75, 28, 6, 0, TURN, 0, 0.6), m.main, [0, -0.62, 0])
+  add(shield, new TorusGeometry(0.42, 0.026, 8, 28), m.accent)
+  add(shield, new TorusGeometry(0.355, 0.008, 4, 28), m.accent, [0, 0, 0.045])
+  add(shield, ball(0.06), m.accent, [0, 0, 0.115], [0, 0, 0], [1, 1, 0.6])
+  for (let i = 0; i < 8; i++) {
+    const a = (i * TURN) / 8
+    add(shield, new ConeGeometry(0.03, 0.15, 4), m.accent, [Math.sin(a) * 0.17, Math.cos(a) * 0.17, 0.1], [0, 0, -a / RAD], [1, 1, 0.3])
+  }
 
-  // дори: древко, наконечник и подток
+  // дори: древко, листовидный наконечник со втулкой и подток
   const spear = joint(r.chest, [-0.52, 0.8, 0.2], [98, 0, 0])
-  add(spear, cyl(0.014, 0.014, 2.0, 6), m.accent)
-  add(spear, new ConeGeometry(0.04, 0.24, 6), m.main, [0, 1.12, 0])
-  add(spear, new ConeGeometry(0.022, 0.1, 5), m.main, [0, -1.05, 0], [180, 0, 0])
-  return ground(r)
+  add(spear, tube(0.014, 0.014, 2.0, 8), m.accent)
+  add(spear, tube(0.02, 0.016, 0.1, 8), m.main, [0, 1.03, 0])
+  add(spear, new ConeGeometry(0.05, 0.3, 8), m.main, [0, 1.22, 0], [0, 0, 0], [1, 1, 0.3])
+  add(spear, new ConeGeometry(0.05, 0.08, 8), m.main, [0, 1.04, 0], [180, 0, 0], [1, 1, 0.3])
+  add(spear, new ConeGeometry(0.022, 0.12, 6), m.main, [0, -1.06, 0], [180, 0, 0])
+
+  // ксифос в ножнах на левом боку
+  const xiphos = joint(r.hips, [0.2 * b, 0.02, -0.02], [18, 0, 14])
+  add(xiphos, box(0.045, 0.42, 0.022), m.accent, [0, -0.2, 0])
+  add(xiphos, box(0.1, 0.02, 0.03), m.main, [0, 0.02, 0])
+  add(xiphos, tube(0.014, 0.014, 0.1, 6), m.main, [0, 0.08, 0])
+  add(xiphos, ball(0.022), m.main, [0, 0.14, 0])
+  return finish(r, m)
 }
 
-/** Викинг: шлем с очковым наносником (без рогов), круглый щит с умбоном, бородатая секира на плече. */
+/** Викинг: шлем с очковым наносником (без рогов), расписной щит с умбоном, бородатая секира на плече. */
 function viking(m: StatueMaterials): Group {
   const r = rig(m, 1.22)
+  const b = r.b
   pose(r.legL.root, 0, 0, 9)
   pose(r.legR.root, 0, 0, -9)
   pose(r.chest, 0, -8, 0)
@@ -193,37 +388,80 @@ function viking(m: StatueMaterials): Group {
   pose(r.armR.root, -30, 0, -12)
   pose(r.armR.mid, -125)
 
-  // рубаха до середины бедра, пояс, плащ и меховой ворот
-  add(r.hips, cyl(0.21, 0.3, 0.34, 8), m.main, [0, -0.1, 0], [0, 0, 0], [1, 1, 0.72])
-  add(r.hips, new TorusGeometry(0.215, 0.028, 5, 12), m.accent, [0, 0.08, 0], [90, 0, 0], [1, 0.72, 1])
-  add(r.chest, box(0.54, 1.0, 0.04), m.accent, [0, -0.06, -0.2], [6, 0, 0])
-  add(r.chest, new TorusGeometry(0.2, 0.065, 5, 10), m.accent, [0, 0.46, -0.01], [90, 0, 0])
+  // рубаха со складками до середины бедра, пояс с пряжкой, сакс поперёк пояса
+  add(r.hips, drape(0.175 * b, 0.25 * b, 0.42, { folds: 11, depth: 0.07 }), m.main, [0, 0.1, 0], [0, 0, 0], [1, 1, 0.76])
+  add(r.hips, new TorusGeometry(0.178 * b, 0.026, 6, 16), m.accent, [0, 0.07, 0], [90, 0, 0], [1, 0.74, 1])
+  add(r.hips, box(0.07, 0.07, 0.025), m.main, [0, 0.07, 0.135 * b])
+  const sax = joint(r.hips, [0.03, 0.0, 0.15 * b], [0, 0, -10])
+  add(sax, box(0.3, 0.045, 0.02), m.accent, [0.02, 0, 0])
+  add(sax, tube(0.016, 0.016, 0.11, 6), m.main, [-0.18, 0, 0], [0, 0, 90])
 
-  // шлем из Гьермундбу: полусфера и «очки» с наносником; борода клином
-  add(r.head, new SphereGeometry(0.13, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), m.accent, [0, 0.03, 0], [0, 0, 0], [1, 1.05, 1.05])
-  add(r.head, new TorusGeometry(0.03, 0.008, 4, 8), m.accent, [0.042, 0.005, 0.108])
-  add(r.head, new TorusGeometry(0.03, 0.008, 4, 8), m.accent, [-0.042, 0.005, 0.108])
-  add(r.head, box(0.02, 0.09, 0.016), m.accent, [0, -0.02, 0.12])
-  add(r.head, new ConeGeometry(0.09, 0.26, 5), m.accent, [0, -0.16, 0.1], [165, 0, 0])
+  // плащ на фибуле у правого плеча и меховой ворот
+  add(r.chest, drape(0.2 * b, 0.42, 1.04, { arc: 2.9, from: Math.PI - 1.45, folds: 8, depth: 0.11 }), m.accent, [0, 0.47, -0.02], [5, 0, 0])
+  add(r.chest, ball(0.035), m.main, [-0.15 * b, 0.46, 0.08], [0, 0, 0], [1, 1, 0.6])
+  around(r.chest, [0, 0.47, -0.01], 18, (spoke, i) => {
+    add(spoke, new ConeGeometry(0.05, 0.16, 5), m.accent, [0, i % 2 ? 0.01 : -0.015, 0.2 * b], [112, 0, i % 2 ? 9 : -9])
+  })
 
+  // шлем из Гьермундбу: купол из четырёх пластин с гребнем, обод, «очки» с наносником
+  add(r.head, new SphereGeometry(0.126, 16, 8, 0, TURN, 0, Math.PI * 0.5), m.accent, [0, 0.02, 0], [0, 0, 0], [0.98, 1.06, 1.06])
+  add(r.head, new TorusGeometry(0.125, 0.012, 5, 18), m.main, [0, 0.022, 0], [90, 0, 0], [0.98, 1.06, 1])
+  add(r.head, new TorusGeometry(0.128, 0.008, 4, 12, Math.PI), m.main, [0, 0.022, 0], [0, 90, 0], [1.06, 1.06, 1])
+  add(r.head, new TorusGeometry(0.128, 0.008, 4, 12, Math.PI), m.main, [0, 0.022, 0], [0, 0, 0], [0.98, 1.06, 1])
+  add(r.head, new ConeGeometry(0.016, 0.05, 6), m.main, [0, 0.165, 0])
+  add(r.head, new TorusGeometry(0.03, 0.008, 5, 10), m.accent, [0.042, 0.0, 0.108])
+  add(r.head, new TorusGeometry(0.03, 0.008, 5, 10), m.accent, [-0.042, 0.0, 0.108])
+  add(r.head, box(0.02, 0.09, 0.018), m.accent, [0, -0.02, 0.118])
+  // борода заплетена в косу, усы, волосы до плеч
+  add(r.head, ball(0.075), m.accent, [0, -0.11, 0.06], [0, 0, 0], [1.1, 1, 0.8])
+  add(r.head, ball(0.055), m.accent, [0, -0.19, 0.075])
+  add(r.head, ball(0.042), m.accent, [0, -0.26, 0.08])
+  add(r.head, ball(0.03), m.accent, [0, -0.315, 0.082])
+  add(r.head, ball(0.024), m.accent, [0.035, -0.06, 0.1], [0, 0, 30], [1.8, 0.7, 0.8])
+  add(r.head, ball(0.024), m.accent, [-0.035, -0.06, 0.1], [0, 0, -30], [1.8, 0.7, 0.8])
+  add(r.head, drape(0.1, 0.14, 0.26, { arc: 3.4, from: Math.PI - 1.7, folds: 7, depth: 0.12 }), m.accent, [0, 0.02, 0])
+
+  // обручья, наручи, обмотки на голенях и сапоги
+  for (const arm of [r.armL, r.armR]) {
+    add(arm.root, new TorusGeometry(0.066 * b, 0.011, 5, 12), m.accent, [0, -0.13, 0], [90, 0, 0])
+    add(arm.mid, limb([0.05 * b, 0.057 * b, 0.046 * b, 0.04 * b], 0.2), m.accent, [0, -0.06, 0])
+  }
+  for (const leg of [r.legL, r.legR]) {
+    for (let i = 0; i < 5; i++) add(leg.mid, new TorusGeometry((0.068 - i * 0.004) * b, 0.009, 4, 10), m.accent, [0, -0.1 - i * 0.06, 0], [90 + (i % 2 ? 9 : -9), 0, 0])
+    add(leg.end, ball(0.07), m.accent, [0, -0.03, 0.06], [0, 0, 0], [0.82, 0.66, 1.9])
+  }
+
+  // щит: доски, раскраска четвертями, железный умбон, обод с заклёпками
   const shield = joint(r.chest, [0.5, -0.02, 0.14], [0, 48, 0])
   shield.scale.setScalar(0.84)
-  add(shield, cyl(0.42, 0.42, 0.035, 18), m.main, [0, 0, 0], [90, 0, 0])
-  add(shield, new TorusGeometry(0.42, 0.02, 5, 18), m.accent)
+  for (let i = 0; i < 4; i++) {
+    add(shield, new CylinderGeometry(0.42, 0.42, 0.035, 9, 1, false, (i * Math.PI) / 2, Math.PI / 2), i % 2 ? m.accent : m.main, [0, 0, 0], [90, 0, 0])
+  }
+  for (let i = -2; i <= 2; i++) add(shield, box(0.006, 0.82 * Math.cos(i * 0.36), 0.04), m.accent, [i * 0.14, 0, 0.002])
+  add(shield, new TorusGeometry(0.42, 0.022, 6, 24), m.accent)
+  for (let i = 0; i < 12; i++) add(shield, ball(0.016), m.main, [Math.sin((i * TURN) / 12) * 0.38, Math.cos((i * TURN) / 12) * 0.38, 0.02])
   const boss = joint(shield, [0, 0, 0.017], [90, 0, 0])
-  add(boss, new SphereGeometry(0.09, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), m.accent)
+  add(boss, new SphereGeometry(0.09, 12, 6, 0, TURN, 0, Math.PI / 2), m.accent)
+  add(boss, tube(0.115, 0.115, 0.008, 14), m.accent)
 
   // секира: топорище уходит за плечо, лезвие оттянуто вниз «бородой»
   const axe = joint(r.chest, [-0.3, 0.42, 0.26], [-50, 0, 0])
-  add(axe, cyl(0.02, 0.022, 0.9, 6), m.accent, [0, 0.3, 0])
-  add(axe, box(0.24, 0.2, 0.026), m.main, [-0.13, 0.68, 0])
-  add(axe, box(0.11, 0.14, 0.026), m.main, [-0.195, 0.53, 0])
-  return ground(r)
+  add(axe, tube(0.02, 0.024, 0.95, 8), m.accent, [0, 0.3, 0])
+  add(axe, ball(0.03), m.main, [0, -0.18, 0])
+  add(
+    axe,
+    plate([[0.03, 0.07], [-0.1, 0.09], [-0.25, 0.13], [-0.285, 0.05], [-0.295, -0.06], [-0.27, -0.17], [-0.2, -0.13], [-0.1, -0.03], [0.03, -0.05]], 0.03),
+    m.main,
+    [0, 0.68, 0],
+  )
+  add(axe, tube(0.03, 0.03, 0.13, 8), m.main, [0, 0.69, 0])
+  return finish(r, m)
 }
 
 /** Самурай трёх мечей: широкая стойка, хакама, по клинку в каждой руке и третий в зубах. */
 function samurai(m: StatueMaterials): Group {
   const r = rig(m, 1.02)
+  const b = r.b
   pose(r.legL.root, -14, 0, 20)
   pose(r.legL.mid, 28)
   pose(r.legR.root, -14, 0, -20)
@@ -234,31 +472,50 @@ function samurai(m: StatueMaterials): Group {
   pose(r.armL.root, -15, 0, 42)
   pose(r.armL.mid, -25)
 
-  // хакама, пояс с узлом, широкие рукава
-  add(r.hips, cyl(0.18, 0.42, 0.8, 8), m.accent, [0, -0.42, 0], [0, 0, 0], [1, 1, 0.82])
-  add(r.hips, new TorusGeometry(0.19, 0.036, 5, 12), m.main, [0, 0.1, 0], [90, 0, 0], [1, 0.74, 1])
-  add(r.hips, box(0.07, 0.2, 0.04), m.main, [0.1, 0, 0.13], [0, 0, 12])
-  add(r.armL.mid, cyl(0.06, 0.11, 0.24, 6), m.accent, [0, -0.12, 0])
-  add(r.armR.mid, cyl(0.06, 0.11, 0.24, 6), m.accent, [0, -0.12, 0])
+  // хакама в глубокую складку
+  add(r.hips, drape(0.17 * b, 0.46, 0.84, { folds: 12, depth: 0.1 }), m.accent, [0, 0.06, 0], [0, 0, 0], [1, 1, 0.86])
+  // запах кимоно: две полосы крест-накрест, ворот вокруг шеи и спинка
+  add(r.chest, box(0.075, 0.46, 0.022), m.accent, [0.062, 0.26, 0.128 * b], [8, 0, 24])
+  add(r.chest, box(0.075, 0.46, 0.022), m.accent, [-0.062, 0.26, 0.133 * b], [8, 0, -24])
+  add(r.chest, drape(0.2 * b, 0.215 * b, 0.34, { arc: 3.5, from: Math.PI - 1.75, folds: 6, depth: 0.03 }), m.accent, [0, 0.45, 0], [0, 0, 0], [1, 1, 0.7])
+  // широкие рукава
+  for (const arm of [r.armL, r.armR]) {
+    add(arm.root, limb([0.085 * b, 0.08 * b, 0.075 * b], 0.24), m.accent)
+    add(arm.mid, drape(0.062, 0.14, 0.25, { folds: 5, depth: 0.1 }), m.accent, [0, 0.02, 0])
+  }
+  // широкий пояс-харамаки с узлом и свисающими концами
+  add(r.hips, lathe([[0.168 * b, 0], [0.18 * b, 0.02], [0.182 * b, 0.11], [0.17 * b, 0.13]]), m.main, [0, 0.02, 0], [0, 0, 0], [1, 1, 0.74])
+  add(r.hips, ball(0.04), m.main, [0.11, 0.08, 0.125])
+  add(r.hips, box(0.05, 0.22, 0.014), m.main, [0.13, -0.04, 0.135], [0, 0, 10])
+  add(r.hips, box(0.045, 0.17, 0.014), m.main, [0.085, -0.03, 0.14], [0, 0, -6])
+  // повязка на левом плече
+  add(r.armL.root, new TorusGeometry(0.088 * b, 0.016, 5, 12), m.main, [0, -0.11, 0], [90, 0, 0])
+  add(r.armL.root, box(0.03, 0.1, 0.01), m.main, [0.07, -0.17, -0.04], [0, 0, 14])
 
-  // короткие волосы торчком
-  const spikes: V3[] = [[0, 0.13, 0], [0.06, 0.11, 0.02], [-0.06, 0.11, 0.02], [0.03, 0.11, -0.06], [-0.03, 0.11, -0.06], [0, 0.11, 0.07]]
-  for (const [x, y, z] of spikes) add(r.head, new ConeGeometry(0.04, 0.1, 4), m.accent, [x, y, z], [z * 400, 0, -x * 400])
+  // короткие волосы торчком и три серьги в левом ухе
+  add(r.head, ball(0.1), m.accent, [0, 0.03, -0.015], [0, 0, 0], [0.93, 0.95, 1])
+  const spikes: V3[] = [[0, 0.115, 0], [0.055, 0.1, 0.02], [-0.055, 0.1, 0.02], [0.03, 0.105, -0.05], [-0.03, 0.105, -0.05], [0, 0.1, 0.06], [0.07, 0.07, -0.03], [-0.07, 0.07, -0.03], [0, 0.085, -0.085], [0.04, 0.095, 0.055], [-0.04, 0.095, 0.055]]
+  for (const [x, y, z] of spikes) add(r.head, new ConeGeometry(0.036, 0.11, 5), m.accent, [x, y, z], [z * 420, 0, -x * 420])
+  for (let i = 0; i < 3; i++) add(r.head, ball(0.011), m.main, [0.1, -0.035 - i * 0.004, -0.012 + i * 0.016], [0, 0, 0], [0.7, 2.6, 0.7])
 
-  sword(r.armR.end, m, 0.9, [-20, 25, 0])
-  sword(r.armL.end, m, 0.9, [10, -30, 0])
+  // три пары ножен на правом боку
+  for (let i = 0; i < 3; i++) {
+    const sheath = joint(r.hips, [-0.17 * b, 0.07 - i * 0.02, 0.02], [68 + i * 7, 0, 12 + i * 4])
+    add(sheath, tube(0.017, 0.013, 0.78, 8), m.main, [0, -0.3, 0])
+    add(sheath, tube(0.02, 0.02, 0.03, 8), m.accent, [0, 0.09, 0])
+  }
+
+  sword(r.armR.end, m, 0.92, [-20, 25, 0])
+  sword(r.armL.end, m, 0.92, [10, -30, 0])
   // третий клинок — в зубах, поперёк лица
-  const third = joint(r.head, [0.1, -0.045, 0.115], [0, 90, 0])
-  add(third, box(0.012, 0.036, 0.9), m.accent, [0, 0, 0.3])
-  add(third, cyl(0.042, 0.042, 0.012, 8), m.main, [0, 0, -0.16], [90, 0, 0])
-  add(third, box(0.022, 0.03, 0.2), m.accent, [0, 0, -0.27])
-  return ground(r)
+  sword(r.head, m, 0.82, [0, 90, 0]).position.set(0.06, -0.05, 0.105)
+  return finish(r, m)
 }
 
 /** Охотник: выпад с коротким клинком, широкие штаны, вокруг плеч обвился дух-червь. */
 function hunter(m: StatueMaterials): Group {
-  const b = 1.15
-  const r = rig(m, b)
+  const r = rig(m, 1.15)
+  const b = r.b
   pose(r.legL.root, -50, 0, 6)
   pose(r.legL.mid, 55)
   pose(r.legR.root, 25, 0, -6)
@@ -270,32 +527,58 @@ function hunter(m: StatueMaterials): Group {
   pose(r.armL.root, 40, 0, 20)
   pose(r.armL.mid, -40)
 
-  for (const leg of [r.legL, r.legR]) {
-    add(leg.root, cyl(0.11 * b, 0.105 * b, 0.44, 6), m.accent, [0, -0.23, 0])
-    add(leg.mid, cyl(0.105 * b, 0.06 * b, 0.36, 6), m.accent, [0, -0.18, 0])
+  // пресс и ключицы: торс обтянут, мышцы читаются
+  for (let row = 0; row < 3; row++) {
+    for (const side of [1, -1]) add(r.chest, ball(0.036 * b), m.main, [0.036 * b * side, 0.2 - row * 0.068, 0.098 * b - row * 0.004], [0, 0, 0], [1, 0.85, 0.5])
   }
-  add(r.hips, cyl(0.185 * b, 0.19 * b, 0.16), m.accent, [0, 0.0, 0], [0, 0, 0], [1, 1, 0.7])
+  add(r.chest, box(0.3 * b, 0.016, 0.02), m.main, [0, 0.44, 0.075 * b])
 
-  add(r.head, new SphereGeometry(0.125, 7, 4, 0, Math.PI * 2, 0, Math.PI * 0.5), m.accent, [0, 0.02, -0.005], [0, 0, 0], [1, 1.05, 1.08])
-  add(r.head, box(0.16, 0.05, 0.04), m.accent, [0, 0.045, 0.1], [20, 0, 0])
+  // широкие штаны, собранные у щиколотки, и пояс с концом
+  for (const leg of [r.legL, r.legR]) {
+    add(leg.root, limb([0.108 * b, 0.125 * b, 0.122 * b, 0.11 * b], 0.46), m.accent)
+    add(leg.mid, limb([0.11 * b, 0.118 * b, 0.1 * b, 0.058 * b], 0.36), m.accent)
+    add(leg.mid, ball(0.112 * b), m.accent)
+    add(leg.mid, new TorusGeometry(0.052 * b, 0.014, 5, 10), m.main, [0, -0.36, 0], [90, 0, 0])
+  }
+  add(r.hips, lathe([[0.1 * b, -0.14], [0.175 * b, -0.08], [0.185 * b, 0.02], [0.168 * b, 0.1]]), m.accent, [0, 0, 0], [0, 0, 0], [1, 1, 0.74])
+  add(r.hips, new TorusGeometry(0.17 * b, 0.026, 6, 16), m.main, [0, 0.1, 0], [90, 0, 0], [1, 0.72, 1])
+  add(r.hips, box(0.05, 0.24, 0.014), m.main, [-0.12, -0.02, 0.12 * b], [0, 0, -8])
 
-  // клинок с боковым зубцом
+  // волосы: шапка и пряди на лоб
+  add(r.head, ball(0.112), m.accent, [0, 0.025, -0.012], [0, 0, 0], [0.95, 1, 1.04])
+  for (let i = -3; i <= 3; i++) {
+    add(r.head, new ConeGeometry(0.026, 0.1, 5), m.accent, [i * 0.026, 0.012 - Math.abs(i) * 0.006, 0.093], [170 - Math.abs(i) * 3, 0, i * 7])
+  }
+  for (const side of [1, -1]) add(r.head, new ConeGeometry(0.028, 0.11, 5), m.accent, [0.09 * side, 0.0, 0.03], [178, 0, 10 * side])
+
+  // клинок с боковым зубцом и цепь от навершия
   const blade = joint(r.armR.end, [0, -0.05, 0])
-  add(blade, box(0.014, 0.05, 0.5), m.accent, [0, 0, 0.3])
-  add(blade, box(0.014, 0.03, 0.13), m.accent, [0, -0.04, 0.14], [-25, 0, 0])
-  add(blade, box(0.024, 0.032, 0.16), m.main, [0, 0, -0.04])
+  add(blade, plate(bladeShape(0.52, 0.05, 0), 0.012), m.accent, [0, 0, 0.05], [0, -90, 0])
+  add(blade, plate([[0, 0], [0.14, 0.035], [0.16, 0.06], [0.02, 0.03]], 0.012), m.accent, [0, -0.025, 0.11], [0, -90, 0])
+  add(blade, box(0.03, 0.07, 0.02), m.main, [0, 0, 0.045])
+  add(blade, tube(0.018, 0.016, 0.17, 8), m.main, [0, 0, -0.045], [90, 0, 0])
+  for (let i = 0; i < 6; i++) add(blade, new TorusGeometry(0.014, 0.004, 4, 8), m.main, [0, -0.005 * i * i, -0.15 - i * 0.022], [i % 2 ? 90 : 0, 0, 0])
 
+  // дух-червь: кольчатое тело вокруг плеч, голова с пастью у правого плеча
   const path = new CatmullRomCurve3(
-    [[-0.22, 0.02, 0.15], [0.2, 0.14, 0.16], [0.29, 0.42, 0], [0.02, 0.5, -0.15], [-0.29, 0.46, 0], [-0.22, 0.64, 0.13]].map(
-      ([x, y, z]) => new Vector3(x, y, z),
+    [[-0.24, -0.02, 0.15], [0.02, 0.06, 0.2], [0.24, 0.16, 0.14], [0.3, 0.42, -0.02], [0.02, 0.52, -0.16], [-0.3, 0.46, -0.02], [-0.25, 0.62, 0.12]].map(
+      ([x, y, z]) => new Vector3(x * b, y, z * b),
     ),
   )
-  add(r.chest, new TubeGeometry(path, 26, 0.05, 6), m.accent)
-  add(r.chest, new IcosahedronGeometry(0.075, 0), m.accent, [-0.22, 0.66, 0.15])
-  return ground(r)
+  add(r.chest, new TubeGeometry(path, 40, 0.048, 10), m.accent)
+  for (let i = 0; i <= 16; i++) {
+    const p = path.getPoint(i / 16)
+    add(r.chest, ball(0.0525), m.accent, [p.x, p.y, p.z])
+  }
+  const tip = path.getPoint(1)
+  add(r.chest, ball(0.078), m.accent, [tip.x, tip.y + 0.03, tip.z + 0.03], [0, 0, 0], [1, 0.85, 1.15])
+  add(r.chest, new ConeGeometry(0.045, 0.07, 8), m.main, [tip.x, tip.y + 0.025, tip.z + 0.11], [90, 0, 0])
+  const tail = path.getPoint(0)
+  add(r.chest, new ConeGeometry(0.048, 0.16, 8), m.accent, [tail.x - 0.06, tail.y - 0.03, tail.z - 0.02], [0, 0, 110])
+  return finish(r, m)
 }
 
-/** Вампир-стрелок: широкополая шляпа, длинный плащ до пят, два тяжёлых пистолета. */
+/** Вампир-стрелок: широкополая шляпа, длинный плащ с пелериной, два тяжёлых пистолета. */
 function gunslinger(m: StatueMaterials): Group {
   const r = rig(m, 1)
   pose(r.legL.root, 0, 0, 5)
@@ -308,30 +591,52 @@ function gunslinger(m: StatueMaterials): Group {
   pose(r.armL.root, 8, 0, 14)
   pose(r.armL.mid, -12)
 
-  // плащ: лиф, длинные полы, высокий ворот и рукава
-  add(r.chest, cyl(0.24, 0.185, 0.47), m.accent, [0, 0.22, 0], [0, 0, 0], [1, 1, 0.72])
-  add(r.hips, cyl(0.2, 0.46, 0.92, 10), m.accent, [0, -0.47, 0], [0, 0, 0], [1, 1, 0.8])
-  add(r.chest, cyl(0.17, 0.125, 0.13), m.accent, [0, 0.5, -0.01])
-  add(r.chest, box(0.09, 0.13, 0.03), m.main, [0, 0.35, 0.135])
+  // плащ: лиф, длинные полы в складку, пелерина на плечах, высокий ворот
+  add(r.chest, lathe([[0.155, -0.02], [0.165, 0.07], [0.185, 0.17], [0.22, 0.3], [0.225, 0.38], [0.19, 0.45], [0.1, 0.49]]), m.accent, [0, 0, 0], [0, 0, 0], [1, 1, 0.7])
+  add(r.hips, drape(0.165, 0.5, 0.98, { folds: 10, depth: 0.12 }), m.accent, [0, 0.12, 0], [0, 0, 0], [1, 1, 0.82])
+  add(r.chest, drape(0.11, 0.31, 0.3, { folds: 9, depth: 0.07 }), m.accent, [0, 0.52, 0], [0, 0, 0], [1, 1, 0.8])
+  add(r.chest, new CylinderGeometry(0.135, 0.1, 0.15, 12, 1, true, 0.75, TURN - 1.5), m.accent, [0, 0.55, -0.005])
+  // пояс с пряжкой и ряд пуговиц
+  add(r.hips, new TorusGeometry(0.168, 0.02, 5, 16), m.main, [0, 0.11, 0], [90, 0, 0], [1, 0.74, 1])
+  add(r.hips, box(0.06, 0.06, 0.02), m.main, [0, 0.11, 0.128])
+  for (let i = 0; i < 4; i++) add(r.chest, ball(0.013), m.main, [0.035, 0.06 + i * 0.07, 0.115 + i * 0.006])
+  // бант на шее
+  add(r.chest, ball(0.026), m.main, [0, 0.44, 0.115])
+  add(r.chest, new ConeGeometry(0.045, 0.1, 5), m.main, [0.055, 0.44, 0.11], [0, 0, 90], [1, 1, 0.4])
+  add(r.chest, new ConeGeometry(0.045, 0.1, 5), m.main, [-0.055, 0.44, 0.11], [0, 0, -90], [1, 1, 0.4])
+  add(r.chest, box(0.03, 0.12, 0.012), m.main, [0.015, 0.36, 0.125], [0, 0, 8])
+  add(r.chest, box(0.03, 0.1, 0.012), m.main, [-0.015, 0.37, 0.125], [0, 0, -8])
+  // рукава с обшлагами
   for (const arm of [r.armL, r.armR]) {
-    add(arm.root, cyl(0.072, 0.062, 0.3, 6), m.accent, [0, -0.15, 0])
-    add(arm.mid, cyl(0.062, 0.056, 0.27, 6), m.accent, [0, -0.135, 0])
+    add(arm.root, limb([0.075, 0.078, 0.068, 0.06], 0.3), m.accent)
+    add(arm.mid, limb([0.06, 0.064, 0.056, 0.052], 0.25), m.accent)
+    add(arm.mid, tube(0.06, 0.066, 0.06, 10), m.accent, [0, -0.235, 0])
+    add(arm.mid, ball(0.062), m.accent)
   }
+  // сапоги
+  for (const leg of [r.legL, r.legR]) add(leg.end, ball(0.068), m.main, [0, -0.03, 0.06], [0, 0, 0], [0.8, 0.66, 1.9])
 
-  // шляпа надвинута на глаза, длинные волосы
-  const hat = joint(r.head, [0, 0.08, 0], [10, 0, 0])
-  add(hat, cyl(0.31, 0.31, 0.02, 14), m.accent)
-  add(hat, cyl(0.115, 0.135, 0.15, 10), m.accent, [0, 0.08, 0])
-  add(r.head, box(0.2, 0.3, 0.06), m.accent, [0, -0.12, -0.09])
+  // шляпа с изогнутыми полями надвинута на глаза, под ней круглые очки
+  const hat = joint(r.head, [0, 0.07, 0], [10, 0, 0])
+  add(hat, lathe([[0.1, 0.012], [0.2, 0], [0.29, 0.02], [0.33, 0.055], [0.325, 0.062], [0.28, 0.034], [0.2, 0.014], [0.1, 0.026]], 24), m.accent)
+  add(hat, lathe([[0.122, 0.01], [0.126, 0.08], [0.112, 0.15], [0.06, 0.168], [0.0005, 0.17]], 18), m.accent)
+  add(hat, new TorusGeometry(0.125, 0.014, 5, 18), m.main, [0, 0.03, 0], [90, 0, 0])
+  for (const side of [1, -1]) add(r.head, tube(0.03, 0.03, 0.008, 12), m.main, [0.04 * side, 0.002, 0.102], [90, 0, 0])
+  add(r.head, box(0.03, 0.006, 0.006), m.main, [0, 0.006, 0.106])
+  // длинные волосы прядями
+  add(r.head, drape(0.1, 0.17, 0.46, { arc: 3.8, from: Math.PI - 1.9, folds: 9, depth: 0.16 }), m.accent, [0, 0.04, 0])
 
-  // пистолеты продолжают линию предплечья
+  // пистолеты продолжают линию предплечья: затвор, ствол, рамка, рукоять, мушка, скоба
   for (const arm of [r.armL, r.armR]) {
-    add(arm.end, box(0.045, 0.44, 0.075), m.main, [0, -0.27, 0.02])
-    add(arm.end, box(0.04, 0.1, 0.07), m.accent, [0, -0.07, -0.05], [25, 0, 0])
+    const gun = joint(arm.end, [0, -0.05, 0.03])
+    add(gun, box(0.04, 0.25, 0.05), m.main, [0, -0.165, 0])
+    add(gun, tube(0.015, 0.015, 0.1, 10), m.main, [0, -0.33, 0.006])
+    add(gun, box(0.036, 0.18, 0.024), m.accent, [0, -0.16, -0.036])
+    add(gun, box(0.036, 0.1, 0.05), m.accent, [0, 0.0, -0.04], [22, 0, 0])
+    add(gun, box(0.01, 0.024, 0.016), m.accent, [0, -0.27, 0.032])
+    add(gun, new TorusGeometry(0.03, 0.007, 4, 10, Math.PI), m.accent, [0, -0.06, -0.07], [0, 90, 180])
   }
-  const figure = ground(r)
-  figure.scale.setScalar(1.05)
-  return figure
+  return finish(r, m, 1.05)
 }
 
 /** Статуэтка по ключу титана; неизвестному ключу достаётся спартанец. */
