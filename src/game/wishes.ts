@@ -20,12 +20,16 @@ export function dueText(date: string, today: string): string {
   return `срок прошёл ${-days} ${plural(-days, DAYS)} назад`
 }
 
-/** Насколько сильно хочется: металл монеты у желания, от самого слабого к самому сильному. */
+/**
+ * Насколько сильно хочется: металл монеты и чин желания, от самого слабого к самому сильному.
+ * Чины задал владелец (барон, граф, король, император); два младших переложены на китайский лад:
+ * мандарин 官 — сановник, князь 侯 — удельный хоу.
+ */
 export const WISH_LEVELS = [
-  { key: 'bronze', name: 'Бронза', hint: 'было бы неплохо' },
-  { key: 'silver', name: 'Серебро', hint: 'хочу' },
-  { key: 'gold', name: 'Золото', hint: 'очень хочу' },
-  { key: 'jade', name: 'Нефрит', hint: 'мечта' },
+  { key: 'bronze', name: 'Бронза', rank: 'мандаринское', glyph: '官' },
+  { key: 'silver', name: 'Серебро', rank: 'княжеское', glyph: '侯' },
+  { key: 'gold', name: 'Золото', rank: 'королевское', glyph: '王' },
+  { key: 'jade', name: 'Нефрит', rank: 'императорское', glyph: '皇' },
 ] as const
 
 export const wishLevel = (level: number) => WISH_LEVELS[Math.min(WISH_LEVELS.length - 1, Math.max(0, Math.round(level) || 0))]

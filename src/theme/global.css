@@ -1748,3 +1748,24 @@ input.amount {
   font-variant-numeric: lining-nums tabular-nums;
   color: var(--accent-bright);
 }
+
+/* чин желания в подписи — цветом своего металла */
+.wish-rank.bronze {
+  color: #d08a4e;
+}
+
+.wish-rank.silver {
+  color: #c4ccd6;
+}
+
+.wish-rank.gold {
+  color: #f2c230;
+}
+
+.wish-rank.jade {
+  color: #4fd0a0;
+}
+
+.wish.done .wish-rank {
+  color: inherit;
+}

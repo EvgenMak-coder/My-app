@@ -15,7 +15,18 @@ function dateTitle(date: string, today: string): string {
 }
 
 /** Выбор металла монеты: насколько сильно хочется. */
-function CoinPick({ level, onPick, disabled = false }: { level: number; onPick: (level: number) => void; disabled?: boolean }) {
+function CoinPick({
+  level,
+  onPick,
+  disabled = false,
+  labelled = false,
+}: {
+  level: number
+  onPick: (level: number) => void
+  disabled?: boolean
+  /** подписать выбранный чин рядом с монетами; в строке желания он уже написан над ними */
+  labelled?: boolean
+}) {
   return (
     <div className="coin-pick" role="radiogroup" aria-label="Насколько хочется">
       {WISH_LEVELS.map((l, i) => (
@@ -24,17 +35,19 @@ function CoinPick({ level, onPick, disabled = false }: { level: number; onPick: 
           type="button"
           role="radio"
           aria-checked={i === level}
-          aria-label={`${l.name} — ${l.hint}`}
-          title={`${l.name} — ${l.hint}`}
+          aria-label={`${l.name} — ${l.rank} желание`}
+          title={`${l.name} — ${l.rank} желание`}
           disabled={disabled}
           onClick={() => onPick(i)}
         >
           <WishCoin level={i} />
         </button>
       ))}
-      <small className="muted">
-        {wishLevel(level).name} · {wishLevel(level).hint}
-      </small>
+      {labelled && (
+        <small className="muted">
+          {wishLevel(level).glyph} {wishLevel(level).rank} желание
+        </small>
+      )}
     </div>
   )
 }
@@ -44,6 +57,7 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
   const remove = useAction((store, id: string) => store.deleteWish(id))
   const relevel = useAction((store, level: number) => setWishLevel(store, wish, level))
   const done = !!wish.doneAt
+  const rank = wishLevel(wish.level)
   const late = !done && !!wish.date && daysTo(wish.date, today) < 0
 
   return (
@@ -61,6 +75,10 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
       <div className="grow">
         {wish.title}
         <small className="muted">
+          <span className={`wish-rank ${rank.key}`}>
+            {rank.glyph} {rank.rank}
+          </span>
+          {' · '}
           {done
             ? `исполнено ${formatDate(wish.doneAt!)}`
             : wish.date
@@ -130,7 +148,7 @@ function AddWish() {
           onChange={(e) => setPrice(e.target.value)}
         />
       </div>
-      <CoinPick level={level} onPick={setLevel} />
+      <CoinPick level={level} onPick={setLevel} labelled />
       <div className="row wrap">
         <div className="tabs" role="radiogroup" aria-label="Срок">
           <button type="button" role="radio" aria-checked={!dated} onClick={() => setDated(false)}>

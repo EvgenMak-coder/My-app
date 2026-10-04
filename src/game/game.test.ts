@@ -175,6 +175,7 @@ describe('wishes', () => {
   it('металл монеты: четыре ступени, чужие значения прижимаются к краям', () => {
     expect(WISH_LEVELS.map((l) => l.key)).toEqual(['bronze', 'silver', 'gold', 'jade'])
     expect(wishLevel(2).name).toBe('Золото')
+    expect(WISH_LEVELS.map((l) => l.rank)).toEqual(['мандаринское', 'княжеское', 'королевское', 'императорское'])
     expect(wishLevel(9).key).toBe('jade')
     expect(wishLevel(-1).key).toBe('bronze')
     expect(wishLevel(NaN).key).toBe('bronze')
