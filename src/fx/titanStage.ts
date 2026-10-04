@@ -21,7 +21,7 @@ import {
 } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import type { Material } from '../game/titans'
-import { buildStatue, type StatueMaterials } from './statues'
+import { buildStatue, isSculpted, type StatueMaterials } from './statues'
 import { prefersReducedMotion } from './util'
 
 type MaterialKey = Material['key']
@@ -214,18 +214,25 @@ export class TitanStage {
   private pending: ReturnType<typeof setTimeout>[] = []
   private still = prefersReducedMotion()
 
+  /** сколько кадров подряд рисовалось медленно — повод снизить чёткость */
+  private slow = 0
+  private frame = 0
+
   constructor(
-    private canvas: HTMLCanvasElement,
-    private onIndex: (index: number) => void,
+    readonly canvas: HTMLCanvasElement,
+    public onIndex: (index: number) => void,
     accent: string,
   ) {
     this.renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    // на телефоне с тройной плотностью экрана полная чёткость стоит слишком дорого
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
     this.renderer.toneMapping = ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.15
     // тени от собственных деталей — без них складки и доспех выглядят плоско
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = PCFSoftShadowMap
+    // тени пересчитываются через кадр: глаз разницы не видит, а работы вдвое меньше
+    this.renderer.shadowMap.autoUpdate = false
 
     // отражения для металла: без окружения бронза и золото выглядят чёрными
     const pmrem = new PMREMGenerator(this.renderer)
@@ -247,7 +254,7 @@ export class TitanStage {
     key.position.set(1.6, 4.4, 5)
     key.target.position.set(0, 1, RADIUS)
     key.castShadow = true
-    key.shadow.mapSize.set(1024, 1024)
+    key.shadow.mapSize.set(768, 768)
     key.shadow.camera.near = 2
     key.shadow.camera.far = 12
     key.shadow.bias = -0.0008
@@ -314,8 +321,9 @@ export class TitanStage {
         turn.add(buildStatue(spec.key, materials))
         this.render()
       }
+      // обычно всё вылеплено заранее, при входе в приложение; иначе выбранную лепим сразу, остальные по очереди
       const order = (i - this.index + specs.length) % specs.length
-      if (order === 0) sculpt()
+      if (order === 0 || isSculpted(spec.key)) sculpt()
       else this.pending.push(setTimeout(sculpt, 60 + order * 90))
       holder.add(base, glow, turn)
       this.ring.add(holder)
@@ -392,17 +400,34 @@ export class TitanStage {
   }
 
   private tick = (now: number): void => {
-    const dt = Math.min(0.05, (now - this.last) / 1000)
+    const elapsed = (now - this.last) / 1000
+    const dt = Math.min(0.05, elapsed)
     this.last = now
     this.update(dt)
+    this.renderer.shadowMap.needsUpdate = this.frame++ % 2 === 0
     this.renderer.render(this.scene, this.camera)
+    // если телефон не успевает (меньше ~40 кадров в секунду полсекунды подряд) — рисуем менее чётко
+    this.slow = elapsed > 0.025 ? this.slow + 1 : 0
+    if (this.slow > 30 && this.renderer.getPixelRatio() > 1) {
+      this.renderer.setPixelRatio(1)
+      this.resize()
+      this.slow = 0
+    }
     this.raf = requestAnimationFrame(this.tick)
   }
 
   /** Один кадр без анимации: круг и статуэтки сразу встают на места. */
   private render(): void {
     if (this.still) this.update(10)
+    this.renderer.shadowMap.needsUpdate = true
     this.renderer.render(this.scene, this.camera)
+  }
+
+  /** Собрать шейдеры и один раз нарисовать сцену заранее, чтобы первое открытие витрины было мгновенным. */
+  warm(): void {
+    this.renderer.setSize(64, 64, false)
+    this.renderer.compile(this.scene, this.camera)
+    this.render()
   }
 
   private update(dt: number): void {
@@ -468,7 +493,7 @@ export class TitanStage {
     this.pending = []
     this.ring.traverse((object) => {
       if (object instanceof Mesh) {
-        object.geometry.dispose()
+        if (!object.userData.keep) object.geometry.dispose()
         const material = object.material as MeshStandardMaterial | MeshStandardMaterial[]
         for (const m of Array.isArray(material) ? material : [material]) m.dispose()
       }
@@ -487,4 +512,16 @@ export class TitanStage {
     this.scene.environment?.dispose()
     this.renderer.dispose()
   }
+}
+
+let shared: TitanStage | null = null
+
+/**
+ * Одна витрина на всё приложение. Она живёт вместе со своим холстом и не пересоздаётся при переходах
+ * между разделами: страница «Тренировки» просто вставляет этот холст к себе.
+ * Бросает ошибку, если на устройстве нет WebGL.
+ */
+export function sharedStage(): TitanStage {
+  if (!shared) shared = new TitanStage(document.createElement('canvas'), () => {}, '#ff7a1a')
+  return shared
 }

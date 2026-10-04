@@ -12,6 +12,7 @@ import { StatsPage } from '../features/stats/StatsPage'
 import { TrainingPage } from '../features/training/TrainingPage'
 import { TreasuryPage } from '../features/treasury/TreasuryPage'
 import { Layout } from './Layout'
+import { Preloader } from './Preloader'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: true, retry: 1 } },
@@ -23,7 +24,9 @@ function Gate() {
   if (cloudEnabled && !session) return <LoginPage />
 
   return (
-    <HashRouter>
+    <>
+      <Preloader />
+      <HashRouter>
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<HomePage />} />
@@ -36,7 +39,8 @@ function Gate() {
           <Route path="*" element={<HomePage />} />
         </Route>
       </Routes>
-    </HashRouter>
+      </HashRouter>
+    </>
   )
 }
 

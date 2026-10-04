@@ -870,6 +870,117 @@ input[type='range'] {
 .gold { --mat: #e6b422; --mat-bright: #ffe38a; }
 .jade { --mat: #2fae7a; --mat-bright: #8ff0c2; }
 
+/* заставка при входе: кольцо туши вокруг иероглифа дракона */
+.preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+    #070608;
+  transition: opacity 0.55s ease;
+}
+
+.preloader.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.preloader-seal {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preloader-seal span {
+  font-size: 4.6rem;
+  line-height: 1;
+  color: var(--accent-bright);
+  text-shadow: 0 0 26px var(--accent), 0 0 60px color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: seal-breathe 2.4s ease-in-out infinite;
+}
+
+/* кольцо с разрывом, как мазок кисти: вращение идёт без участия основного потока и не замирает */
+.enso {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  animation: enso-turn 2.6s linear infinite;
+}
+
+.enso circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-dasharray: 218 58;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+
+.enso.inner {
+  animation-duration: 4.2s;
+  animation-direction: reverse;
+  opacity: 0.45;
+}
+
+.enso.inner circle {
+  stroke: var(--accent-bright);
+  stroke-width: 1.2;
+  stroke-dasharray: 40 22 110 54;
+}
+
+.preloader-title {
+  font-family: var(--font-title);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.preloader .bar {
+  width: min(70%, 260px);
+}
+
+.preloader .bar > span {
+  transition: width 0.25s ease;
+}
+
+@keyframes enso-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes seal-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enso,
+  .preloader-seal span {
+    animation: none;
+  }
+}
+
 /* витрина: статуэтки по кругу, под ними — данные выбранной */
 .titan-stage {
   display: flex;
@@ -893,10 +1004,6 @@ input[type='range'] {
 
 .carousel canvas:active {
   cursor: grabbing;
-}
-
-.carousel canvas.hidden {
-  display: none;
 }
 
 .carousel.loading,

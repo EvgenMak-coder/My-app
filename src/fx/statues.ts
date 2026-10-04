@@ -172,6 +172,8 @@ interface Rig {
   armR: Limb
   legL: Limb
   legR: Limb
+  /** Что вылепить после того, как поза встала: волосы, бороду, одежду по фигуре */
+  later: ((put: (geometry: BufferGeometry, tone: keyof StatueMaterials) => void) => void)[]
   /** множитель ширины: телосложение */
   b: number
 }
@@ -202,7 +204,15 @@ function rig(m: StatueMaterials, b = 1): Rig {
     const ankle = joint(knee, [0, -0.4, 0])
     return { root: hip, mid: knee, end: ankle }
   }
-  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), b }
+  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), later: [], b }
+}
+
+/** Кусок «глины» вокруг перечисленных суставов — для волос, бороды и одежды по фигуре. */
+function clayAround(joints: Object3D[], pad: number, cell: number): Clay {
+  const bounds = new Box3()
+  for (const g of joints) bounds.expandByPoint(new Vector3(...spot(g)))
+  bounds.expandByScalar(pad)
+  return new Clay(bounds.min, bounds.max, cell)
 }
 
 /** Точка сустава (или точка рядом с ним, в его координатах) в координатах статуэтки. */
@@ -220,7 +230,7 @@ function sculptBody(r: Rig): { clays: Clay[]; parts: BufferGeometry[] } {
   }
   bounds.expandByScalar(0.26)
 
-  const body = new Clay(bounds.min, bounds.max, 0.016)
+  const body = new Clay(bounds.min, bounds.max, 0.019)
   const hips = r.hips.matrixWorld
   const chest = r.chest.matrixWorld
   // корпус: таз, талия, грудная клетка, грудные мышцы, спина
@@ -254,7 +264,7 @@ function sculptBody(r: Rig): { clays: Clay[]; parts: BufferGeometry[] } {
   }
 
   const centre = new Vector3(...spot(r.head))
-  const face = new Clay(centre.clone().subScalar(0.2), centre.clone().addScalar(0.2), 0.0065)
+  const face = new Clay(centre.clone().subScalar(0.2), centre.clone().addScalar(0.2), 0.0075)
   const head = r.head.matrixWorld
   const k = 0.012
   face.add(head, { kind: 'ball', at: [0, 0.012, -0.008], r: [0.092, 0.116, 0.108] }, k)
@@ -291,9 +301,11 @@ function finish(r: Rig, m: StatueMaterials, size = 1): Group {
   r.root.updateMatrixWorld(true)
 
   const { clays, parts: flesh } = sculptBody(r)
+  const sculpted: Record<keyof StatueMaterials, BufferGeometry[]> = { main: [...flesh], accent: [] }
+  for (const shape of r.later) shape((geometry, tone) => sculpted[tone].push(geometry))
   const statue = new Group()
   for (const material of [m.main, m.accent]) {
-    const parts: BufferGeometry[] = material === m.main ? [...flesh] : []
+    const parts: BufferGeometry[] = material === m.main ? sculpted.main : sculpted.accent
     r.root.traverse((object) => {
       if (!(object instanceof Mesh) || object.material !== material) return
       const part: BufferGeometry = object.geometry.index ? object.geometry.toNonIndexed() : object.geometry.clone()
@@ -469,13 +481,20 @@ function viking(m: StatueMaterials): Group {
   add(r.head, new TorusGeometry(0.03, 0.008, 5, 10), m.accent, [0.042, 0.0, 0.108])
   add(r.head, new TorusGeometry(0.03, 0.008, 5, 10), m.accent, [-0.042, 0.0, 0.108])
   add(r.head, box(0.02, 0.09, 0.018), m.accent, [0, -0.02, 0.118])
-  // борода заплетена в косу, усы, волосы до плеч
-  add(r.head, ball(0.075), m.accent, [0, -0.11, 0.06], [0, 0, 0], [1.1, 1, 0.8])
-  add(r.head, ball(0.055), m.accent, [0, -0.19, 0.075])
-  add(r.head, ball(0.042), m.accent, [0, -0.26, 0.08])
-  add(r.head, ball(0.03), m.accent, [0, -0.315, 0.082])
-  add(r.head, ball(0.024), m.accent, [0.035, -0.06, 0.1], [0, 0, 30], [1.8, 0.7, 0.8])
-  add(r.head, ball(0.024), m.accent, [-0.035, -0.06, 0.1], [0, 0, -30], [1.8, 0.7, 0.8])
+  // борода клином с косой и усы — вылеплены, волосы до плеч
+  r.later.push((put) => {
+    const head = r.head.matrixWorld
+    const beard = clayAround([r.head], 0.4, 0.008)
+    beard.add(head, { kind: 'ball', at: [0, -0.1, 0.06], r: [0.078, 0.062, 0.052] }, 0.015)
+    beard.add(head, { kind: 'bone', a: [0, -0.13, 0.07], b: [0, -0.31, 0.088], ra: 0.056, rb: 0.018 }, 0.015)
+    for (const side of [1, -1]) {
+      beard.add(head, { kind: 'bone', a: [0.008 * side, -0.056, 0.104], b: [0.078 * side, -0.1, 0.082], ra: 0.016, rb: 0.007 }, 0.008)
+      beard.add(head, { kind: 'bone', a: [0.085 * side, -0.03, 0.03], b: [0.06 * side, -0.12, 0.05], ra: 0.022, rb: 0.03 }, 0.015)
+    }
+    // перехваты косы
+    for (const y of [-0.2, -0.26]) beard.carve(head, { kind: 'bone', a: [-0.07, y, 0.08], b: [0.07, y, 0.08], ra: 0.012, rb: 0.012 }, 0.02)
+    put(beard.build(), 'accent')
+  })
   add(r.head, drape(0.1, 0.14, 0.26, { arc: 3.4, from: Math.PI - 1.7, folds: 7, depth: 0.12 }), m.accent, [0, 0.02, 0])
 
   // обручья, наручи, обмотки на голенях и сапоги
@@ -531,13 +550,24 @@ function samurai(m: StatueMaterials): Group {
 
   // хакама в глубокую складку
   add(r.hips, drape(0.17 * b, 0.46, 0.84, { folds: 12, depth: 0.1 }), m.accent, [0, 0.06, 0], [0, 0, 0], [1, 1, 0.86])
-  // запах кимоно: две полосы крест-накрест, ворот вокруг шеи и спинка
-  add(r.chest, box(0.075, 0.46, 0.022), m.accent, [0.062, 0.26, 0.128 * b], [8, 0, 24])
-  add(r.chest, box(0.075, 0.46, 0.022), m.accent, [-0.062, 0.26, 0.133 * b], [8, 0, -24])
-  add(r.chest, drape(0.2 * b, 0.215 * b, 0.34, { arc: 3.5, from: Math.PI - 1.75, folds: 6, depth: 0.03 }), m.accent, [0, 0.45, 0], [0, 0, 0], [1, 1, 0.7])
+  // кимоно вылеплено по фигуре: запах открывает грудь, рукава до локтя
+  r.later.push((put) => {
+    const chest = r.chest.matrixWorld
+    const robe = clayAround([r.chest, r.hips, r.armL.root, r.armR.root, r.armL.mid, r.armR.mid], 0.2, 0.013)
+    robe.add(chest, { kind: 'ball', at: [0, 0.07, 0], r: [0.165 * b, 0.19, 0.118 * b] })
+    // с запасом спереди: грудные мышцы не должны проступать сквозь ткань
+    robe.add(chest, { kind: 'ball', at: [0, 0.29, 0.012], r: [0.222 * b, 0.214, 0.164 * b] })
+    for (const arm of [r.armL, r.armR]) {
+      robe.add(arm.root.matrixWorld, { kind: 'ball', at: [0, 0, 0], r: 0.103 * b })
+      robe.add(null, { kind: 'bone', a: spot(arm.root), b: spot(arm.mid, [0, 0.04, 0]), ra: 0.09 * b, rb: 0.085 * b })
+    }
+    // вырез: клин от шеи к поясу и отверстие под шею
+    robe.carve(chest, { kind: 'bone', a: [0, 0.54, 0.16], b: [0, 0.17, 0.19], ra: 0.07, rb: 0.006 }, 0.012)
+    robe.carve(null, { kind: 'bone', a: spot(r.chest, [0, 0.43, -0.01]), b: spot(r.head, [0, 0.02, 0]), ra: 0.076, rb: 0.072 }, 0.012)
+    put(robe.build(), 'accent')
+  })
   // широкие рукава
   for (const arm of [r.armL, r.armR]) {
-    add(arm.root, limb([0.085 * b, 0.08 * b, 0.075 * b], 0.24), m.accent)
     add(arm.mid, drape(0.062, 0.14, 0.25, { folds: 5, depth: 0.1 }), m.accent, [0, 0.02, 0])
   }
   // широкий пояс-харамаки с узлом и свисающими концами
@@ -549,10 +579,19 @@ function samurai(m: StatueMaterials): Group {
   add(r.armL.root, new TorusGeometry(0.088 * b, 0.016, 5, 12), m.main, [0, -0.11, 0], [90, 0, 0])
   add(r.armL.root, box(0.03, 0.1, 0.01), m.main, [0.07, -0.17, -0.04], [0, 0, 14])
 
-  // короткие волосы торчком и три серьги в левом ухе
-  add(r.head, ball(0.1), m.accent, [0, 0.03, -0.015], [0, 0, 0], [0.93, 0.95, 1])
-  const spikes: V3[] = [[0, 0.115, 0], [0.055, 0.1, 0.02], [-0.055, 0.1, 0.02], [0.03, 0.105, -0.05], [-0.03, 0.105, -0.05], [0, 0.1, 0.06], [0.07, 0.07, -0.03], [-0.07, 0.07, -0.03], [0, 0.085, -0.085], [0.04, 0.095, 0.055], [-0.04, 0.095, 0.055]]
-  for (const [x, y, z] of spikes) add(r.head, new ConeGeometry(0.036, 0.11, 5), m.accent, [x, y, z], [z * 420, 0, -x * 420])
+  // короткие волосы торчком — вылеплены одной массой, и три серьги в левом ухе
+  r.later.push((put) => {
+    const head = r.head.matrixWorld
+    const hair = clayAround([r.head], 0.3, 0.008)
+    hair.add(head, { kind: 'ball', at: [0, 0.035, -0.014], r: [0.099, 0.108, 0.113] }, 0.012)
+    const spikes: V3[] = [[0, 0.115, 0], [0.055, 0.1, 0.02], [-0.055, 0.1, 0.02], [0.03, 0.105, -0.05], [-0.03, 0.105, -0.05], [0, 0.1, 0.06], [0.07, 0.07, -0.03], [-0.07, 0.07, -0.03], [0, 0.085, -0.085], [0.04, 0.095, 0.055], [-0.04, 0.095, 0.055]]
+    for (const [x, y, z] of spikes) {
+      hair.add(head, { kind: 'bone', a: [x * 0.8, y * 0.8 + 0.02, z * 0.8], b: [x * 1.75, y * 1.55 + 0.02, z * 1.75], ra: 0.03, rb: 0.004 }, 0.012)
+    }
+    // лицо остаётся открытым
+    hair.carve(head, { kind: 'ball', at: [0, -0.035, 0.095], r: [0.09, 0.085, 0.075] }, 0.012)
+    put(hair.build(), 'accent')
+  })
   for (let i = 0; i < 3; i++) add(r.head, ball(0.011), m.main, [0.1, -0.035 - i * 0.004, -0.012 + i * 0.016], [0, 0, 0], [0.7, 2.6, 0.7])
 
   // три пары ножен на правом боку
@@ -600,13 +639,20 @@ function hunter(m: StatueMaterials): Group {
   add(r.hips, new TorusGeometry(0.17 * b, 0.026, 6, 16), m.main, [0, 0.1, 0], [90, 0, 0], [1, 0.72, 1])
   add(r.hips, box(0.05, 0.24, 0.014), m.main, [-0.12, -0.02, 0.12 * b], [0, 0, -8])
 
-  // волосы: шапка и пряди на лоб
-  add(r.head, ball(0.114), m.accent, [0, 0.028, -0.004], [0, 0, 0], [0.96, 1, 1.08])
-  // пряди растут из-под шапки волос и падают на лоб: основания спрятаны внутри неё
-  for (let i = -3; i <= 3; i++) {
-    add(r.head, new ConeGeometry(0.02, 0.13, 6), m.accent, [i * 0.024, 0.045 - Math.abs(i) * 0.004, 0.082], [152 - Math.abs(i) * 4, 0, i * 8], [1, 1, 0.6])
-  }
-  for (const side of [1, -1]) add(r.head, new ConeGeometry(0.028, 0.11, 5), m.accent, [0.09 * side, 0.0, 0.03], [178, 0, 10 * side])
+  // волосы вылеплены одной массой: шапка, пряди на лоб и у висков
+  r.later.push((put) => {
+    const head = r.head.matrixWorld
+    const hair = clayAround([r.head], 0.3, 0.008)
+    hair.add(head, { kind: 'ball', at: [0, 0.036, -0.012], r: [0.1, 0.11, 0.116] }, 0.012)
+    hair.carve(head, { kind: 'ball', at: [0, -0.04, 0.095], r: [0.092, 0.09, 0.08] }, 0.012)
+    for (let i = -3; i <= 3; i++) {
+      hair.add(head, { kind: 'bone', a: [i * 0.022, 0.095, 0.07], b: [i * 0.03, 0.004 + Math.abs(i) * 0.008, 0.109], ra: 0.02, rb: 0.007 }, 0.01)
+    }
+    for (const side of [1, -1]) {
+      hair.add(head, { kind: 'bone', a: [0.088 * side, 0.05, 0.02], b: [0.098 * side, -0.05, 0.03], ra: 0.024, rb: 0.009 }, 0.01)
+    }
+    put(hair.build(), 'accent')
+  })
 
   // клинок с боковым зубцом и цепь от навершия
   const blade = joint(r.armR.end, [0, -0.05, 0])
@@ -696,18 +742,60 @@ function gunslinger(m: StatueMaterials): Group {
   return finish(r, m, 1.05)
 }
 
-/** Статуэтка по ключу титана; неизвестному ключу достаётся спартанец. */
-export function buildStatue(key: string, materials: StatueMaterials): Group {
+// метки тонов на время лепки: по ним детали раскладываются на две сетки
+const TONES: StatueMaterials = { main: new MeshStandardMaterial(), accent: new MeshStandardMaterial() }
+
+type Sculpted = Partial<Record<keyof StatueMaterials, BufferGeometry>>
+const sculptedCache = new Map<string, Sculpted>()
+
+function sculptorOf(key: string): (m: StatueMaterials) => Group {
   switch (key) {
     case 'strength':
-      return viking(materials)
+      return viking
     case 'agility':
-      return samurai(materials)
+      return samurai
     case 'burst':
-      return hunter(materials)
+      return hunter
     case 'flexibility':
-      return gunslinger(materials)
+      return gunslinger
     default:
-      return spartan(materials)
+      // неизвестному ключу достаётся спартанец
+      return spartan
   }
+}
+
+/** Вылеплена ли уже фигура этого титана. */
+export const isSculpted = (key: string): boolean => sculptedCache.has(key)
+
+/**
+ * Лепит фигуру титана (доли секунды работы) и запоминает до конца сеанса.
+ * Вызывается заранее, при входе в приложение, чтобы витрина открывалась без ожидания.
+ */
+export function sculptStatue(key: string): Sculpted {
+  let sculpted = sculptedCache.get(key)
+  if (!sculpted) {
+    sculpted = {}
+    for (const child of sculptorOf(key)(TONES).children) {
+      if (child instanceof Mesh) sculpted[child.material === TONES.main ? 'main' : 'accent'] = child.geometry
+    }
+    sculptedCache.set(key, sculpted)
+  }
+  return sculpted
+}
+
+/** Статуэтка титана из готовой лепки, отлитая в заданные материалы. */
+export function buildStatue(key: string, materials: StatueMaterials): Group {
+  const sculpted = sculptStatue(key)
+  const statue = new Group()
+  for (const tone of ['main', 'accent'] as const) {
+    const geometry = sculpted[tone]
+    if (!geometry) continue
+    const cast = new Mesh(geometry, materials[tone])
+    cast.castShadow = true
+    cast.receiveShadow = true
+    // лепка общая на весь сеанс: витрина не должна освобождать её вместе с собой
+    cast.userData.keep = true
+    statue.add(cast)
+  }
+  return statue
 }
