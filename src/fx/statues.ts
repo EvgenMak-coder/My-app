@@ -37,13 +37,13 @@ type V3 = [number, number, number]
 const RAD = Math.PI / 180
 const TURN = Math.PI * 2
 
-const ball = (radius: number): SphereGeometry => new SphereGeometry(radius, 14, 10)
+const ball = (radius: number): SphereGeometry => new SphereGeometry(radius, 18, 12)
 const box = (w: number, h: number, d: number): BoxGeometry => new BoxGeometry(w, h, d)
 const tube = (top: number, bottom: number, height: number, sides = 12): CylinderGeometry =>
   new CylinderGeometry(top, bottom, height, sides)
 
 /** Тело вращения по профилю: пары «радиус, высота» снизу вверх. */
-function lathe(profile: [number, number][], sides = 16): LatheGeometry {
+function lathe(profile: [number, number][], sides = 22): LatheGeometry {
   return new LatheGeometry(
     profile.map(([r, y]) => new Vector2(Math.max(r, 0.0005), y)),
     sides,
@@ -54,7 +54,7 @@ function lathe(profile: [number, number][], sides = 16): LatheGeometry {
 function limb(radii: number[], length: number): LatheGeometry {
   const last = radii.length - 1
   // профиль идёт снизу вверх, от кисти к плечу
-  return lathe(radii.map((r, i): [number, number] => [r, -(length * i) / last]).reverse(), 12)
+  return lathe(radii.map((r, i): [number, number] => [r, -(length * i) / last]).reverse(), 16)
 }
 
 /**
@@ -207,6 +207,13 @@ function rig(m: StatueMaterials, b = 1): Rig {
   add(head, ball(0.08), m.main, [0, -0.065, 0.018], [0, 0, 0], [0.86, 0.78, 0.95])
   add(head, box(0.024, 0.05, 0.034), m.main, [0, -0.018, 0.098], [-18, 0, 0])
   add(head, box(0.13, 0.02, 0.04), m.main, [0, 0.03, 0.08])
+  // глаза в тени надбровья, скулы и губы
+  for (const side of [1, -1]) {
+    add(head, ball(0.015), m.accent, [0.037 * side, 0.008, 0.086], [0, 0, 0], [1.25, 0.7, 0.7])
+    add(head, ball(0.03), m.main, [0.055 * side, -0.028, 0.068], [0, 0, 0], [1, 0.8, 0.6])
+  }
+  add(head, box(0.05, 0.012, 0.02), m.main, [0, -0.062, 0.088])
+  add(head, ball(0.028), m.main, [0, -0.1, 0.07], [0, 0, 0], [1.1, 0.8, 0.8])
   add(head, ball(0.024), m.main, [0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
   add(head, ball(0.024), m.main, [-0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
 
@@ -221,6 +228,10 @@ function rig(m: StatueMaterials, b = 1): Rig {
     // кисть сжата в кулак, сбоку большой палец
     add(hand, ball(0.046), m.main, [0, -0.045, 0], [0, 0, 0], [0.82, 1.15, 0.72])
     add(hand, ball(0.02), m.main, [0.03 * side, -0.035, 0.022], [0, 0, 0], [0.8, 1.4, 0.8])
+    // костяшки четырёх пальцев
+    for (let i = 0; i < 4; i++) add(hand, ball(0.013), m.main, [(-0.027 + i * 0.018) * side, -0.08, 0.012], [0, 0, 0], [0.9, 1.1, 1.3])
+    // ключица и трапеция к шее
+    add(shoulder, ball(0.05 * b), m.main, [-0.1 * b * side, 0.06, -0.01], [0, 0, 0], [1.9, 0.75, 0.9])
     return { root: shoulder, mid: elbow, end: hand }
   }
   const leg = (side: 1 | -1): Limb => {
@@ -228,6 +239,9 @@ function rig(m: StatueMaterials, b = 1): Rig {
     add(hip, limb([0.092 * b, 0.097 * b, 0.08 * b, 0.062 * b], 0.45), m.main)
     const knee = joint(hip, [0, -0.45, 0])
     add(knee, ball(0.06 * b), m.main)
+    // коленная чашечка и икра
+    add(knee, ball(0.036 * b), m.main, [0, 0, 0.04 * b], [0, 0, 0], [1, 1.2, 0.7])
+    add(knee, ball(0.055 * b), m.main, [0, -0.13, -0.022 * b], [0, 0, 0], [0.95, 1.7, 0.8])
     add(knee, limb([0.058 * b, 0.07 * b, 0.05 * b, 0.04 * b], 0.4), m.main)
     const ankle = joint(knee, [0, -0.4, 0])
     feet.push(add(ankle, ball(0.06), m.main, [0, -0.035, 0.065], [0, 0, 0], [0.82, 0.62, 2]))
@@ -545,9 +559,10 @@ function hunter(m: StatueMaterials): Group {
   add(r.hips, box(0.05, 0.24, 0.014), m.main, [-0.12, -0.02, 0.12 * b], [0, 0, -8])
 
   // волосы: шапка и пряди на лоб
-  add(r.head, ball(0.112), m.accent, [0, 0.025, -0.012], [0, 0, 0], [0.95, 1, 1.04])
+  add(r.head, ball(0.114), m.accent, [0, 0.028, -0.004], [0, 0, 0], [0.96, 1, 1.08])
+  // пряди растут из-под шапки волос и падают на лоб: основания спрятаны внутри неё
   for (let i = -3; i <= 3; i++) {
-    add(r.head, new ConeGeometry(0.026, 0.1, 5), m.accent, [i * 0.026, 0.012 - Math.abs(i) * 0.006, 0.093], [170 - Math.abs(i) * 3, 0, i * 7])
+    add(r.head, new ConeGeometry(0.02, 0.13, 6), m.accent, [i * 0.024, 0.045 - Math.abs(i) * 0.004, 0.082], [152 - Math.abs(i) * 4, 0, i * 8], [1, 1, 0.6])
   }
   for (const side of [1, -1]) add(r.head, new ConeGeometry(0.028, 0.11, 5), m.accent, [0.09 * side, 0.0, 0.03], [178, 0, 10 * side])
 

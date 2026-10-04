@@ -42,8 +42,12 @@ export default function TitanCarousel({
     stage.start()
     const observer = new ResizeObserver(() => stage.resize())
     observer.observe(canvas)
+    // витрина, прокрученная за край экрана, не рисуется — бережём батарею
+    const watcher = new IntersectionObserver(([entry]) => (entry.isIntersecting ? stage.start() : stage.stop()))
+    watcher.observe(canvas)
     return () => {
       observer.disconnect()
+      watcher.disconnect()
       stage.dispose()
       stageRef.current = null
     }

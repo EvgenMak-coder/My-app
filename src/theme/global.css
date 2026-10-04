@@ -502,8 +502,30 @@ input[type='range'] {
   height: 360px;
 }
 
-.wheel .recharts-radar-polygon {
+.radar svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.wheel-grid polygon,
+.wheel-grid line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-opacity: 0.22;
+}
+
+.wheel-shape {
+  fill: color-mix(in srgb, var(--accent) 28%, transparent);
+  stroke: var(--accent-bright);
+  stroke-width: 2;
+  stroke-linejoin: round;
   filter: drop-shadow(0 0 10px var(--accent));
+}
+
+.wheel-dot {
+  fill: var(--accent-bright);
 }
 
 .wheel-label .name {
@@ -735,6 +757,62 @@ input[type='range'] {
 .chart {
   width: 100%;
   height: 280px;
+}
+
+/* линия роста */
+.line-chart {
+  display: block;
+  touch-action: pan-y;
+}
+
+.line-chart .grid {
+  stroke: var(--line);
+}
+
+.line-chart .tick {
+  fill: var(--text-dim);
+  font-size: 12px;
+}
+
+.line-chart .line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.line-chart .dot {
+  fill: var(--surface-solid);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.line-chart .dot.active {
+  fill: var(--accent-bright);
+}
+
+.line-chart .guide {
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+}
+
+.line-chart .tip rect {
+  fill: var(--surface-solid);
+  stroke: var(--line);
+}
+
+.line-chart .tip .value {
+  fill: var(--text);
+  font-family: var(--font-title);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.donut svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .login {

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { LineChart } from '../../components/charts'
 import { Dragon } from '../../components/Dragon'
 import { DataGate, formatDate, Panel } from '../../components/ui'
 import { addDeed } from '../../data/actions'
@@ -78,30 +78,11 @@ function DragonPath({ xp }: { xp: number }) {
   )
 }
 
-const tooltipStyle = {
-  background: 'var(--surface-solid)',
-  border: '1px solid var(--line)',
-  borderRadius: 3,
-  color: 'var(--text)',
-}
-
 function TimeChart({ data, domain }: { data: { at: string; value: number }[]; domain?: [number, number] }) {
   if (data.length < 2) {
     return <p className="muted">Нужно хотя бы два изменения, чтобы нарисовать линию роста.</p>
   }
-  return (
-    <div className="chart">
-      <ResponsiveContainer>
-        <LineChart data={data.map((d) => ({ ...d, label: formatDate(d.at) }))} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
-          <CartesianGrid stroke="var(--line)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: 'var(--text-dim)', fontSize: 12 }} stroke="var(--line)" />
-          <YAxis domain={domain} tick={{ fill: 'var(--text-dim)', fontSize: 12 }} stroke="var(--line)" />
-          <Tooltip contentStyle={tooltipStyle} />
-          <Line type="monotone" dataKey="value" name="Значение" stroke="var(--accent)" strokeWidth={2} dot={{ r: 3 }} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
+  return <LineChart data={data.map((d) => ({ label: formatDate(d.at), value: d.value }))} domain={domain} />
 }
 
 const byTime = (a: { at: string }, b: { at: string }) => a.at.localeCompare(b.at)

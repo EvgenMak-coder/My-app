@@ -1,56 +1,55 @@
-import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from 'recharts'
 import type { LifeArea } from '../data/types'
 
-interface TickProps {
-  x?: number
-  y?: number
-  cx?: number
-  cy?: number
-  payload?: { value: string }
-}
+const WIDTH = 400
+const HEIGHT = 360
+const CX = WIDTH / 2
+const CY = HEIGHT / 2
+const RADIUS = 118
+const RINGS = [20, 40, 60, 80, 100]
 
+/** Колесо жизни: паутинка сфер, значение 0–100 откладывается от центра. Нарисовано своим SVG, без библиотек. */
 export function RadarWheel({ areas }: { areas: LifeArea[] }) {
-  const data = areas.map((a) => ({ name: a.name, value: a.value }))
-  const valueOf = (name: string) => areas.find((a) => a.name === name)?.value ?? 0
-
-  // подпись сферы: название и крупное значение, отодвинутые от вершины наружу
-  const tick = ({ x = 0, y = 0, cx = 0, cy = 0, payload }: TickProps) => {
-    const name = payload?.value ?? ''
-    const dx = x - cx
-    const dy = y - cy
-    const d = Math.hypot(dx, dy) || 1
-    const tx = x + (dx / d) * 22
-    const ty = y + (dy / d) * 22
-    return (
-      <g className="wheel-label">
-        <text x={tx} y={ty - 4} textAnchor="middle" className="name">
-          {name}
-        </text>
-        <text x={tx} y={ty + 16} textAnchor="middle" className="value">
-          {valueOf(name)}
-        </text>
-      </g>
-    )
+  const count = Math.max(1, areas.length)
+  // первая сфера — вверху, дальше по часовой стрелке
+  const point = (i: number, value: number): [number, number] => {
+    const a = -Math.PI / 2 + (i * Math.PI * 2) / count
+    const r = (RADIUS * value) / 100
+    return [CX + Math.cos(a) * r, CY + Math.sin(a) * r]
   }
+  const ring = (value: number): string => areas.map((_, i) => point(i, value).join(',')).join(' ')
 
   return (
     <div className="chart radar">
-      <ResponsiveContainer>
-        <RadarChart data={data} outerRadius="66%">
-          <PolarGrid stroke="var(--accent)" strokeOpacity={0.22} />
-          <PolarAngleAxis dataKey="name" tick={tick} />
-          <PolarRadiusAxis domain={[0, 100]} tickCount={5} tick={false} axisLine={false} />
-          <Radar
-            dataKey="value"
-            stroke="var(--accent-bright)"
-            fill="var(--accent)"
-            fillOpacity={0.28}
-            strokeWidth={2}
-            isAnimationActive={false}
-            dot={{ r: 4, fill: 'var(--accent-bright)', stroke: 'none' }}
-          />
-        </RadarChart>
-      </ResponsiveContainer>
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Колесо жизни">
+        <g className="wheel-grid">
+          {RINGS.map((value) => (
+            <polygon key={value} points={ring(value)} />
+          ))}
+          {areas.map((a, i) => {
+            const [x, y] = point(i, 100)
+            return <line key={a.id} x1={CX} y1={CY} x2={x} y2={y} />
+          })}
+        </g>
+        <polygon className="wheel-shape" points={areas.map((a, i) => point(i, a.value).join(',')).join(' ')} />
+        {areas.map((a, i) => {
+          const [x, y] = point(i, a.value)
+          return <circle key={a.id} className="wheel-dot" cx={x} cy={y} r={4} />
+        })}
+        {areas.map((a, i) => {
+          // подпись сферы: название и крупное значение, отодвинутые от вершины наружу
+          const [x, y] = point(i, 100 + (22 * 100) / RADIUS)
+          return (
+            <g key={a.id} className="wheel-label">
+              <text x={x} y={y - 4} textAnchor="middle" className="name">
+                {a.name}
+              </text>
+              <text x={x} y={y + 16} textAnchor="middle" className="value">
+                {a.value}
+              </text>
+            </g>
+          )
+        })}
+      </svg>
     </div>
   )
 }

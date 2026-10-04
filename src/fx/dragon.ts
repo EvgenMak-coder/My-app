@@ -212,6 +212,8 @@ export class DragonScene {
   start(): void {
     this.resize()
     if (prefersReducedMotion()) return
+    // повторный запуск не должен плодить второй цикл
+    cancelAnimationFrame(this.raf)
     this.last = performance.now()
     this.raf = requestAnimationFrame(this.tick)
   }

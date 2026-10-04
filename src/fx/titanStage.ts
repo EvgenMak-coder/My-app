@@ -1,6 +1,7 @@
 import {
   ACESFilmicToneMapping,
   Color,
+  DirectionalLight,
   DoubleSide,
   Fog,
   Group,
@@ -25,14 +26,146 @@ import { prefersReducedMotion } from './util'
 
 type MaterialKey = Material['key']
 
-/** Из чего отлита статуэтка: основной тон, тёмный тон для ткани и оружия, блеск. */
-const CAST: Record<MaterialKey, { color: number; accent: number; metalness: number; roughness: number; glow: number }> = {
-  wood: { color: 0xa5713f, accent: 0x5e3b1f, metalness: 0, roughness: 0.72, glow: 0 },
-  bronze: { color: 0xc07f3f, accent: 0x74481f, metalness: 1, roughness: 0.4, glow: 0 },
-  silver: { color: 0xdde1e8, accent: 0x858e99, metalness: 1, roughness: 0.3, glow: 0 },
-  gold: { color: 0xf7c650, accent: 0xb07a17, metalness: 1, roughness: 0.27, glow: 0 },
-  // нефрит не металл: гладкий камень, слегка светится изнутри
-  jade: { color: 0x45c08a, accent: 0x1d6e52, metalness: 0.15, roughness: 0.2, glow: 0x0b3a28 },
+interface Cast {
+  color: number
+  accent: number
+  metalness: number
+  roughness: number
+  glow: number
+  /** фактура: 0 — дерево, 1 — металл, 2 — нефрит */
+  kind: number
+  /** чем затянуты потёртые места металла и насколько сильно (0…1) */
+  patina: number
+  patinaMix: number
+  /** высота рельефа поверхности */
+  relief: number
+}
+
+/** Из чего отлита статуэтка: основной тон, тёмный тон для ткани и оружия, блеск и фактура. */
+const CAST: Record<MaterialKey, Cast> = {
+  wood: { color: 0xb07a45, accent: 0x633e20, metalness: 0, roughness: 0.68, glow: 0, kind: 0, patina: 0, patinaMix: 0, relief: 0.006 },
+  // бронза с зеленоватой патиной в углублениях
+  bronze: { color: 0xc8843f, accent: 0x7a4a1f, metalness: 1, roughness: 0.36, glow: 0, kind: 1, patina: 0x2f5d4c, patinaMix: 0.36, relief: 0.004 },
+  // серебро темнеет, но не зеленеет
+  silver: { color: 0xe3e7ee, accent: 0x8a939e, metalness: 1, roughness: 0.26, glow: 0, kind: 1, patina: 0x2c2f36, patinaMix: 0.4, relief: 0.003 },
+  gold: { color: 0xfacb55, accent: 0xb47d18, metalness: 1, roughness: 0.24, glow: 0, kind: 1, patina: 0x6e4a10, patinaMix: 0.35, relief: 0.0025 },
+  // нефрит не металл: гладкий камень с облачными прожилками, слегка светится изнутри
+  jade: { color: 0x49c690, accent: 0x1f7558, metalness: 0.1, roughness: 0.16, glow: 0x0b3a28, kind: 2, patina: 0, patinaMix: 0, relief: 0 },
+}
+
+interface SurfaceUniforms {
+  uKind: { value: number }
+  uPatina: { value: Color }
+  uPatinaMix: { value: number }
+  uRelief: { value: number }
+}
+
+const SURFACE_DECLARE = /* glsl */ `
+uniform float uKind;
+uniform vec3 uPatina;
+uniform float uPatinaMix;
+uniform float uRelief;
+varying vec3 vObj;
+
+float hash31(vec3 p) {
+  p = fract(p * 0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
+}
+
+float vnoise(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(hash31(i), hash31(i + vec3(1, 0, 0)), f.x), mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x), f.y),
+    mix(mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x), mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x), f.y),
+    f.z);
+}
+
+float fbm(vec3 p) {
+  float amount = 0.5;
+  float sum = 0.0;
+  for (int i = 0; i < 3; i++) {
+    sum += amount * vnoise(p);
+    p = p * 2.03 + 7.1;
+    amount *= 0.5;
+  }
+  return sum / 0.875;
+}
+
+// x — узор цвета (0…1), y — высота рельефа (0…1)
+vec2 surfacePattern(vec3 p) {
+  if (uKind < 0.5) {
+    // дерево: годовые кольца, вытянутые вдоль фигуры, и мелкое волокно
+    float warp = fbm(vec3(p.x * 4.0, p.y * 1.1, p.z * 4.0));
+    float rings = 0.5 + 0.5 * sin((p.x * 7.0 + p.z * 5.0 + warp * 4.5) * 6.2831);
+    float fibre = vnoise(vec3(p.x * 34.0, p.y * 4.0, p.z * 34.0));
+    return vec2(mix(rings, fibre, 0.35), rings * 0.55 + fibre * 0.45);
+  }
+  if (uKind < 1.5) {
+    // металл: крупные потёртости и мелкая чеканка
+    return vec2(fbm(p * 5.5), fbm(p * 15.0));
+  }
+  // нефрит: облака и тёмные прожилки
+  float cloud = fbm(p * 3.0);
+  float vein = pow(1.0 - abs(sin(p.y * 4.5 + p.x * 2.0 + cloud * 7.0)), 6.0);
+  return vec2(clamp(cloud - vein * 0.45, 0.0, 1.0), 0.0);
+}
+`
+
+/** Фактура материала прямо в шейдере: без картинок-текстур, узор считается по положению точки на фигуре. */
+function surface(material: MeshStandardMaterial): SurfaceUniforms {
+  const uniforms: SurfaceUniforms = {
+    uKind: { value: 1 },
+    uPatina: { value: new Color(0) },
+    uPatinaMix: { value: 0 },
+    uRelief: { value: 0 },
+  }
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms)
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObj;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObj = position;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${SURFACE_DECLARE}`)
+      .replace(
+        '#include <color_fragment>',
+        /* glsl */ `#include <color_fragment>
+        vec2 sp = surfacePattern(vObj);
+        float worn = smoothstep(0.24, 0.6, sp.x);
+        if (uKind < 0.5) diffuseColor.rgb *= mix(0.6, 1.14, sp.x);
+        else if (uKind < 1.5) diffuseColor.rgb = mix(mix(diffuseColor.rgb * 0.55, uPatina, uPatinaMix), diffuseColor.rgb * 1.05, worn);
+        else diffuseColor.rgb *= mix(0.62, 1.32, sp.x);`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        /* glsl */ `#include <roughnessmap_fragment>
+        if (uKind < 0.5) roughnessFactor = clamp(roughnessFactor + (0.5 - sp.x) * 0.3, 0.05, 1.0);
+        else if (uKind < 1.5) roughnessFactor = clamp(roughnessFactor + (1.0 - worn) * 0.4, 0.05, 1.0);`,
+      )
+      .replace(
+        '#include <metalnessmap_fragment>',
+        /* glsl */ `#include <metalnessmap_fragment>
+        if (uKind > 0.5 && uKind < 1.5) metalnessFactor *= mix(1.0 - uPatinaMix * 0.7, 1.0, worn);`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        /* glsl */ `#include <normal_fragment_maps>
+        if (uRelief > 0.0) {
+          // рельеф поверхности: наклоняем нормаль по перепаду высоты узора
+          float height = sp.y * uRelief;
+          vec3 sigmaX = dFdx(-vViewPosition);
+          vec3 sigmaY = dFdy(-vViewPosition);
+          vec3 r1 = cross(sigmaY, normal);
+          vec3 r2 = cross(normal, sigmaX);
+          float det = dot(sigmaX, r1) * faceDirection;
+          vec3 grad = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+          normal = normalize(abs(det) * normal - grad);
+        }`,
+      )
+  }
+  return uniforms
 }
 
 export interface StatueSpec {
@@ -45,6 +178,7 @@ interface Slot {
   holder: Group
   turn: Group
   materials: StatueMaterials
+  surfaces: SurfaceUniforms[]
   ring: MeshStandardMaterial
   spin: number
   size: number
@@ -98,6 +232,10 @@ export class TitanStage {
     this.camera.lookAt(0, 1.12, 0)
 
     this.scene.add(new HemisphereLight(0x8fa0b8, 0x120d0a, 0.5))
+    // холодный заполняющий свет слева: лепит форму с теневой стороны
+    const fill = new DirectionalLight(0x9db8ff, 0.7)
+    fill.position.set(-3.5, 2.6, 4)
+    this.scene.add(fill)
     const key = new SpotLight(0xfff1dd, 70, 14, 0.42, 0.6, 1.4)
     key.position.set(1.6, 4.4, 5)
     key.target.position.set(0, 1, RADIUS)
@@ -166,7 +304,7 @@ export class TitanStage {
       turn.add(buildStatue(spec.key, materials))
       holder.add(base, glow, turn)
       this.ring.add(holder)
-      this.slots.push({ key: spec.key, holder, turn, materials, ring, spin: 0, size: SIDE_SIZE })
+      this.slots.push({ key: spec.key, holder, turn, materials, surfaces: [surface(materials.main), surface(materials.accent)], ring, spin: 0, size: SIDE_SIZE })
     })
     this.angle = -this.place * this.step
   }
@@ -179,6 +317,12 @@ export class TitanStage {
       m.metalness = c.metalness
       m.roughness = c.roughness
       m.emissive.setHex(c.glow)
+    }
+    for (const u of slot.surfaces) {
+      u.uKind.value = c.kind
+      u.uPatina.value.setHex(c.patina)
+      u.uPatinaMix.value = c.patinaMix
+      u.uRelief.value = c.relief
     }
   }
 
@@ -221,8 +365,15 @@ export class TitanStage {
   start(): void {
     this.resize()
     if (this.still) return
+    // повторный запуск не должен плодить второй цикл
+    cancelAnimationFrame(this.raf)
     this.last = performance.now()
     this.raf = requestAnimationFrame(this.tick)
+  }
+
+  /** Остановить отрисовку, пока витрину не видно. */
+  stop(): void {
+    cancelAnimationFrame(this.raf)
   }
 
   private tick = (now: number): void => {

@@ -20,7 +20,7 @@ import {
 const KEY = 'heavenly-dragon:v1'
 
 export class LocalStore implements DataStore {
-  private read(): Snapshot {
+  protected read(): Snapshot {
     try {
       const raw = localStorage.getItem(KEY)
       if (raw) return normalizeSnapshot(JSON.parse(raw) as Snapshot)
@@ -32,7 +32,7 @@ export class LocalStore implements DataStore {
     return fresh
   }
 
-  private write(s: Snapshot): void {
+  protected write(s: Snapshot): void {
     localStorage.setItem(KEY, JSON.stringify(s))
   }
 
@@ -187,5 +187,23 @@ export class LocalStore implements DataStore {
   replaceAll(snapshot: Snapshot): Promise<void> {
     this.write(snapshot)
     return Promise.resolve()
+  }
+}
+
+/**
+ * Хранилище в памяти поверх готового снимка. На нём действие проигрывается заранее,
+ * чтобы экран обновился сразу, не дожидаясь ответа облака (см. useAction).
+ */
+export class MemoryStore extends LocalStore {
+  constructor(public snapshot: Snapshot) {
+    super()
+  }
+
+  protected read(): Snapshot {
+    return this.snapshot
+  }
+
+  protected write(s: Snapshot): void {
+    this.snapshot = s
   }
 }

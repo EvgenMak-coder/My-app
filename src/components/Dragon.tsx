@@ -16,8 +16,12 @@ export function Dragon({ level, ratio, label }: { level: number; ratio: number; 
     scene.start()
     const observer = new ResizeObserver(() => scene.resize())
     observer.observe(canvas)
+    // дракон, прокрученный за край экрана, не рисуется — бережём батарею
+    const watcher = new IntersectionObserver(([entry]) => (entry.isIntersecting ? scene.start() : scene.stop()))
+    watcher.observe(canvas)
     return () => {
       observer.disconnect()
+      watcher.disconnect()
       scene.stop()
     }
     // сцена создаётся один раз; уровень и цвета обновляются ниже

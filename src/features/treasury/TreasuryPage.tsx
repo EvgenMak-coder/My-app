@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts'
+import { Donut } from '../../components/charts'
 import { Bar, DataGate, formatDate, Panel } from '../../components/ui'
 import {
   addTransaction,
@@ -631,23 +631,7 @@ function SharesPanel({ transactions }: { transactions: Transaction[] }) {
       ) : (
         <div className="shares">
           <div className="donut">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie
-                  data={shares.map((s) => ({ name: s.category.name, value: s.amount }))}
-                  dataKey="value"
-                  innerRadius="62%"
-                  outerRadius="92%"
-                  paddingAngle={2}
-                  stroke="none"
-                  isAnimationActive={false}
-                >
-                  {shares.map((s) => (
-                    <Cell key={s.category.key} fill={s.category.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+            <Donut parts={shares.map((s) => ({ key: s.category.key, value: s.amount, color: s.category.color }))} />
             <div className="donut-center">
               <span className="muted">всего</span>
               <b>{formatMoney(total)}</b>
