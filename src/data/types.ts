@@ -83,6 +83,19 @@ export interface Countdown {
   date: string
 }
 
+/** Желание: то, что хочется купить или сделать */
+export interface Wish {
+  id: string
+  title: string
+  /** цена в рублях; 0 — цена не указана */
+  price: number
+  /** к какому дню хочется, 'ГГГГ-ММ-ДД'; null — без срока */
+  date: string | null
+  createdAt: string
+  /** когда исполнено; null — ещё желание, иначе в архиве */
+  doneAt: string | null
+}
+
 export interface Transaction {
   id: string
   kind: 'income' | 'expense'
@@ -141,6 +154,7 @@ export interface Snapshot {
   transactions: Transaction[]
   subscriptions: Subscription[]
   countdowns: Countdown[]
+  wishes: Wish[]
 }
 
 /** Формат, который пишет scripts/import_excel.py */
@@ -194,6 +208,7 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (!Array.isArray(s.transactions)) s.transactions = []
   if (!Array.isArray(s.subscriptions)) s.subscriptions = []
   if (!Array.isArray(s.countdowns)) s.countdowns = []
+  if (!Array.isArray(s.wishes)) s.wishes = []
   return s
 }
 
@@ -215,6 +230,7 @@ export function emptySnapshot(): Snapshot {
     transactions: [],
     subscriptions: [],
     countdowns: [],
+    wishes: [],
   }
 }
 
@@ -260,6 +276,7 @@ export function snapshotFromSeed(seed: Seed): Snapshot {
     transactions: [],
     subscriptions: [],
     countdowns: [],
+    wishes: [],
     areaHistory: areas.map((a) => ({ id: newId(), refId: a.id, value: a.value, at })),
     skillHistory: skills.map((s) => ({ id: newId(), refId: s.id, value: s.value, at })),
     xpEvents: [],

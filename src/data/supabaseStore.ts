@@ -16,6 +16,7 @@ import {
   type Subscription,
   type Titan,
   type Transaction,
+  type Wish,
   type Workout,
   type XpEvent,
   type XpSource,
@@ -45,6 +46,7 @@ const tableMissing = (error: Failure | null): boolean =>
   !!error && (error.code === 'PGRST205' || error.code === '42P01')
 
 const NO_SUBSCRIPTIONS = 'В облаке ещё нет таблицы подписок — выполни в Supabase файл 0005_subscriptions.sql'
+const NO_WISHES = 'В облаке ещё нет таблицы желаний — выполни в Supabase файл 0007_wishes.sql'
 const NO_COUNTDOWNS = 'В облаке ещё нет таблицы грядущих дней — выполни в Supabase файл 0006_countdowns.sql'
 
 function rows<T>(res: Result<T[]>): T[] {
@@ -65,6 +67,7 @@ interface TitanHistoryRow { id: string; titan_id: string; value: number; at: str
 interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
 interface GoalRow { id: string; title: string; level: number; progress: number; color: string; rewarded: boolean; created_at: string; done_at: string | null; position: number }
 interface SubscriptionRow { id: string; name: string; amount: number; day: number; started_at: string; ended_at: string | null }
+interface WishRow { id: string; title: string; price: number; date: string | null; created_at: string; done_at: string | null }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
 
 const subscriptionRow = (s: Subscription): SubscriptionRow => ({
@@ -76,12 +79,21 @@ const subscriptionRow = (s: Subscription): SubscriptionRow => ({
   ended_at: s.endedAt,
 })
 
+const wishRow = (w: Wish): WishRow => ({
+  id: w.id,
+  title: w.title,
+  price: w.price,
+  date: w.date,
+  created_at: w.createdAt,
+  done_at: w.doneAt,
+})
+
 // user_id в строках не передаём — в базе стоит default auth.uid(), а RLS не пускает к чужим данным
 export class SupabaseStore implements DataStore {
   constructor(private db: SupabaseClient) {}
 
   async load(): Promise<Snapshot> {
-    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions, subscriptions, countdowns] = await Promise.all([
+    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions, subscriptions, countdowns, wishes] = await Promise.all([
       this.db.from('profile').select('dragon_name').maybeSingle(),
       this.db.from('life_areas').select('id,key,name,value,position').order('position'),
       this.db.from('skills').select('id,category,name,value,position').order('position'),
@@ -97,6 +109,7 @@ export class SupabaseStore implements DataStore {
       this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
       this.db.from('subscriptions').select('id,name,amount,day,started_at,ended_at').order('day'),
       this.db.from('countdowns').select('id,title,date').order('date'),
+      this.db.from('wishes').select('id,title,price,date,created_at,done_at').order('created_at'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -125,6 +138,14 @@ export class SupabaseStore implements DataStore {
       salaries: rows<Salary>(salaries),
       transactions: rows<Transaction>(transactions),
       countdowns: tableMissing(countdowns.error) ? [] : rows<Countdown>(countdowns),
+      wishes: (tableMissing(wishes.error) ? [] : rows<WishRow>(wishes)).map((r) => ({
+        id: r.id,
+        title: r.title,
+        price: r.price,
+        date: r.date,
+        createdAt: r.created_at,
+        doneAt: r.done_at,
+      })),
       // без таблицы подписок остальное приложение продолжает работать
       subscriptions: (tableMissing(subscriptions.error) ? [] : rows<SubscriptionRow>(subscriptions)).map((r) => ({
         id: r.id,
@@ -232,6 +253,16 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('countdowns').delete().eq('id', id))
   }
 
+  async saveWish(wish: Wish): Promise<void> {
+    const res = await this.db.from('wishes').upsert(wishRow(wish))
+    if (tableMissing(res.error)) throw new Error(NO_WISHES)
+    check(res)
+  }
+
+  async deleteWish(id: string): Promise<void> {
+    check(await this.db.from('wishes').delete().eq('id', id))
+  }
+
   async setDragonName(name: string): Promise<void> {
     const { data, error } = await this.db.auth.getUser()
     if (error || !data.user) throw new Error('Нужно войти в аккаунт')
@@ -254,6 +285,8 @@ export class SupabaseStore implements DataStore {
     if (!tableMissing(cleared.error)) check(cleared)
     const emptied = await this.db.from('countdowns').delete().neq('id', all)
     if (!tableMissing(emptied.error)) check(emptied)
+    const wiped = await this.db.from('wishes').delete().neq('id', all)
+    if (!tableMissing(wiped.error)) check(wiped)
 
     if (s.areas.length) check(await this.db.from('life_areas').insert(s.areas))
     if (s.skills.length) check(await this.db.from('skills').insert(s.skills))
@@ -279,6 +312,11 @@ export class SupabaseStore implements DataStore {
     if (s.countdowns.length) {
       const res = await this.db.from('countdowns').insert(s.countdowns)
       if (tableMissing(res.error)) throw new Error(NO_COUNTDOWNS)
+      check(res)
+    }
+    if (s.wishes.length) {
+      const res = await this.db.from('wishes').insert(s.wishes.map(wishRow))
+      if (tableMissing(res.error)) throw new Error(NO_WISHES)
       check(res)
     }
     if (s.subscriptions.length) {

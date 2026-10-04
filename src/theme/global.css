@@ -436,7 +436,8 @@ input[type='range'] {
   font-size: 0.8rem;
 }
 
-.tabs button[aria-selected='false'] {
+.tabs button[aria-selected='false'],
+.tabs button[aria-checked='false'] {
   background: transparent;
   border-color: var(--line);
   color: var(--text-dim);
@@ -1606,4 +1607,67 @@ input.amount {
   font-family: var(--font-title);
   font-size: 1.2rem;
   font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* ---------- желания ---------- */
+
+.wish {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.wish:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.wish small {
+  display: block;
+}
+
+.wish.late small {
+  color: var(--danger);
+}
+
+.wish.done .grow {
+  color: var(--text-dim);
+}
+
+.wish.done .money {
+  color: var(--text-dim);
+}
+
+/* галочка — кружок тушью: пустой у желания, с отметкой у исполненного */
+.wish-check {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  color: #ffe38a;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.wish-check:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.wish-check[aria-checked='true'] {
+  border-color: #e6b422;
+  background: color-mix(in srgb, #e6b422 16%, transparent);
+  text-shadow: 0 0 10px #e6b422;
+}
+
+.wish-total {
+  font-family: var(--font-title);
+  font-size: 1.2rem;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--accent-bright);
 }

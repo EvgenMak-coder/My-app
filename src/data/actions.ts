@@ -15,6 +15,7 @@ import {
   type Snapshot,
   type Subscription,
   type Transaction,
+  type Wish,
 } from './types'
 
 const now = (): string => new Date().toISOString()
@@ -270,4 +271,21 @@ export async function resumeSubscription(store: DataStore, sub: Subscription, to
 /** Грядущий день на главной: название и дата 'ГГГГ-ММ-ДД'. */
 export async function createCountdown(store: DataStore, title: string, date: string): Promise<void> {
   await store.saveCountdown({ id: newId(), title: title.trim(), date })
+}
+
+/** Новое желание: цена 0 — не указана, date null — без срока. */
+export async function createWish(store: DataStore, wish: { title: string; price: number; date: string | null }): Promise<void> {
+  await store.saveWish({
+    id: newId(),
+    title: wish.title.trim(),
+    price: Math.max(0, Math.round(wish.price) || 0),
+    date: wish.date || null,
+    createdAt: new Date().toISOString(),
+    doneAt: null,
+  })
+}
+
+/** Галочка: исполненное желание уходит в архив, снятая галочка возвращает его в список. */
+export async function toggleWish(store: DataStore, wish: Wish): Promise<void> {
+  await store.saveWish({ ...wish, doneAt: wish.doneAt ? null : new Date().toISOString() })
 }

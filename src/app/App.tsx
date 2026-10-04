@@ -11,6 +11,7 @@ import { SkillsPage } from '../features/skills/SkillsPage'
 import { StatsPage } from '../features/stats/StatsPage'
 import { TrainingPage } from '../features/training/TrainingPage'
 import { TreasuryPage } from '../features/treasury/TreasuryPage'
+import { WishesPage } from '../features/wishes/WishesPage'
 import { Layout } from './Layout'
 import { Preloader } from './Preloader'
 
@@ -33,6 +34,7 @@ function Gate() {
           <Route path="treasury" element={<TreasuryPage />} />
           <Route path="training" element={<TrainingPage />} />
           <Route path="goals" element={<GoalsPage />} />
+          <Route path="wishes" element={<WishesPage />} />
           <Route path="skills" element={<SkillsPage />} />
           <Route path="stats" element={<StatsPage />} />
           <Route path="settings" element={<SettingsPage />} />

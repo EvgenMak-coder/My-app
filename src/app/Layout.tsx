@@ -6,6 +6,7 @@ const LINKS = [
   { to: '/treasury', glyph: '財', label: 'Казна' },
   { to: '/training', glyph: '武', label: 'Тренировки' },
   { to: '/goals', glyph: '志', label: 'Цели' },
+  { to: '/wishes', glyph: '願', label: 'Желания' },
   { to: '/skills', glyph: '技', label: 'Навыки' },
   { to: '/stats', glyph: '鑑', label: 'Статистика' },
   { to: '/settings', glyph: '設', label: 'Настройки' },

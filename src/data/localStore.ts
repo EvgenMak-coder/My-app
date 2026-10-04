@@ -3,6 +3,7 @@ import {
   emptySnapshot,
   normalizeSnapshot,
   type Countdown,
+  type Wish,
   type Credit,
   type Goal,
   type HistoryPoint,
@@ -175,6 +176,20 @@ export class LocalStore implements DataStore {
   deleteCountdown(id: string): Promise<void> {
     return this.mutate((s) => {
       s.countdowns = s.countdowns.filter((x) => x.id !== id)
+    })
+  }
+
+  saveWish(wish: Wish): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.wishes.findIndex((x) => x.id === wish.id)
+      if (i >= 0) s.wishes[i] = wish
+      else s.wishes.push(wish)
+    })
+  }
+
+  deleteWish(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.wishes = s.wishes.filter((x) => x.id !== id)
     })
   }
 

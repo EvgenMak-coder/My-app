@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { leftText, plural, sortByNearness, timeLeft, wisdomFor } from './countdown'
+import { daysTo, dueText, sortWishes, wishTotal } from './wishes'
 import { coinGlow, GOAL_LEVELS } from './goals'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
@@ -140,6 +141,38 @@ describe('countdown', () => {
   it('даёт одну мысль на день и меняет её назавтра', () => {
     expect(wisdomFor(new Date(2026, 9, 4, 1))).toBe(wisdomFor(new Date(2026, 9, 4, 23)))
     expect(wisdomFor(new Date(2026, 9, 4))).not.toBe(wisdomFor(new Date(2026, 9, 5)))
+  })
+})
+
+describe('wishes', () => {
+  it('считает календарные дни до срока', () => {
+    expect(daysTo('2026-10-05', '2026-10-04')).toBe(1)
+    expect(daysTo('2027-01-01', '2026-10-04')).toBe(89)
+    expect(daysTo('2026-10-01', '2026-10-04')).toBe(-3)
+    // переход на зимнее время не съедает день
+    expect(daysTo('2026-11-02', '2026-10-24')).toBe(9)
+  })
+
+  it('пишет срок словами', () => {
+    expect(dueText('2026-10-04', '2026-10-04')).toBe('сегодня')
+    expect(dueText('2026-10-05', '2026-10-04')).toBe('завтра')
+    expect(dueText('2026-10-25', '2026-10-04')).toBe('через 21 день')
+    expect(dueText('2026-10-01', '2026-10-04')).toBe('срок прошёл 3 дня назад')
+  })
+
+  it('ставит желания со сроком первыми, бессрочные — следом по порядку появления', () => {
+    const items = [
+      { title: 'б', date: null, createdAt: '2026-02-01' },
+      { title: 'в', date: '2027-05-01', createdAt: '2026-03-01' },
+      { title: 'а', date: null, createdAt: '2026-01-01' },
+      { title: 'г', date: '2026-12-01', createdAt: '2026-04-01' },
+    ]
+    expect(sortWishes(items).map((w) => w.title)).toEqual(['г', 'в', 'а', 'б'])
+  })
+
+  it('складывает цены', () => {
+    expect(wishTotal([{ price: 250000 }, { price: 0 }, { price: 1500 }])).toBe(251500)
+    expect(wishTotal([])).toBe(0)
   })
 })
 
