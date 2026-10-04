@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { leftText, plural, sortByNearness, timeLeft, wisdomFor } from './countdown'
-import { daysTo, dueText, sortWishes, wishTotal } from './wishes'
+import { daysTo, dueText, sortWishes, WISH_LEVELS, wishLevel, wishTotal } from './wishes'
 import { coinGlow, GOAL_LEVELS } from './goals'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
@@ -160,14 +160,24 @@ describe('wishes', () => {
     expect(dueText('2026-10-01', '2026-10-04')).toBe('срок прошёл 3 дня назад')
   })
 
-  it('ставит желания со сроком первыми, бессрочные — следом по порядку появления', () => {
+  it('ставит самые желанные первыми, внутри металла — со сроком, затем бессрочные по порядку появления', () => {
     const items = [
-      { title: 'б', date: null, createdAt: '2026-02-01' },
-      { title: 'в', date: '2027-05-01', createdAt: '2026-03-01' },
-      { title: 'а', date: null, createdAt: '2026-01-01' },
-      { title: 'г', date: '2026-12-01', createdAt: '2026-04-01' },
+      { title: 'б', level: 0, date: null, createdAt: '2026-02-01' },
+      { title: 'в', level: 0, date: '2027-05-01', createdAt: '2026-03-01' },
+      { title: 'а', level: 0, date: null, createdAt: '2026-01-01' },
+      { title: 'г', level: 0, date: '2026-12-01', createdAt: '2026-04-01' },
+      { title: 'мечта', level: 3, date: null, createdAt: '2026-05-01' },
+      { title: 'золото', level: 2, date: null, createdAt: '2026-06-01' },
     ]
-    expect(sortWishes(items).map((w) => w.title)).toEqual(['г', 'в', 'а', 'б'])
+    expect(sortWishes(items).map((w) => w.title)).toEqual(['мечта', 'золото', 'г', 'в', 'а', 'б'])
+  })
+
+  it('металл монеты: четыре ступени, чужие значения прижимаются к краям', () => {
+    expect(WISH_LEVELS.map((l) => l.key)).toEqual(['bronze', 'silver', 'gold', 'jade'])
+    expect(wishLevel(2).name).toBe('Золото')
+    expect(wishLevel(9).key).toBe('jade')
+    expect(wishLevel(-1).key).toBe('bronze')
+    expect(wishLevel(NaN).key).toBe('bronze')
   })
 
   it('складывает цены', () => {

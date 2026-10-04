@@ -67,7 +67,7 @@ interface TitanHistoryRow { id: string; titan_id: string; value: number; at: str
 interface WorkoutRow { id: string; titan_id: string; type: string; result: string; gain: number; at: string }
 interface GoalRow { id: string; title: string; level: number; progress: number; color: string; rewarded: boolean; created_at: string; done_at: string | null; position: number }
 interface SubscriptionRow { id: string; name: string; amount: number; day: number; started_at: string; ended_at: string | null }
-interface WishRow { id: string; title: string; price: number; date: string | null; created_at: string; done_at: string | null }
+interface WishRow { id: string; title: string; level: number; price: number; date: string | null; created_at: string; done_at: string | null }
 interface XpRow { id: string; source: XpSource; amount: number; note: string; at: string }
 
 const subscriptionRow = (s: Subscription): SubscriptionRow => ({
@@ -82,6 +82,7 @@ const subscriptionRow = (s: Subscription): SubscriptionRow => ({
 const wishRow = (w: Wish): WishRow => ({
   id: w.id,
   title: w.title,
+  level: w.level,
   price: w.price,
   date: w.date,
   created_at: w.createdAt,
@@ -109,7 +110,7 @@ export class SupabaseStore implements DataStore {
       this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
       this.db.from('subscriptions').select('id,name,amount,day,started_at,ended_at').order('day'),
       this.db.from('countdowns').select('id,title,date').order('date'),
-      this.db.from('wishes').select('id,title,price,date,created_at,done_at').order('created_at'),
+      this.db.from('wishes').select('id,title,level,price,date,created_at,done_at').order('created_at'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -141,6 +142,7 @@ export class SupabaseStore implements DataStore {
       wishes: (tableMissing(wishes.error) ? [] : rows<WishRow>(wishes)).map((r) => ({
         id: r.id,
         title: r.title,
+        level: r.level,
         price: r.price,
         date: r.date,
         createdAt: r.created_at,

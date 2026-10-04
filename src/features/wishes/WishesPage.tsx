@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
 import { DataGate, Panel, formatDate } from '../../components/ui'
-import { createWish, toggleWish } from '../../data/actions'
+import { WishCoin } from '../../components/WishCoin'
+import { createWish, setWishLevel, toggleWish } from '../../data/actions'
 import { useAction } from '../../data/hooks'
 import type { Snapshot, Wish } from '../../data/types'
 import { dayKey, formatMoney } from '../../game/treasury'
-import { daysTo, dueText, sortWishes, wishTotal } from '../../game/wishes'
+import { daysTo, dueText, sortWishes, WISH_LEVELS, wishLevel, wishTotal } from '../../game/wishes'
 
 /** '15 мая', а для другого года — '15 мая 2027' */
 function dateTitle(date: string, today: string): string {
@@ -13,9 +14,35 @@ function dateTitle(date: string, today: string): string {
   return String(year) === today.slice(0, 4) ? title : `${title} ${year}`
 }
 
+/** Выбор металла монеты: насколько сильно хочется. */
+function CoinPick({ level, onPick, disabled = false }: { level: number; onPick: (level: number) => void; disabled?: boolean }) {
+  return (
+    <div className="coin-pick" role="radiogroup" aria-label="Насколько хочется">
+      {WISH_LEVELS.map((l, i) => (
+        <button
+          key={l.key}
+          type="button"
+          role="radio"
+          aria-checked={i === level}
+          aria-label={`${l.name} — ${l.hint}`}
+          title={`${l.name} — ${l.hint}`}
+          disabled={disabled}
+          onClick={() => onPick(i)}
+        >
+          <WishCoin level={i} />
+        </button>
+      ))}
+      <small className="muted">
+        {wishLevel(level).name} · {wishLevel(level).hint}
+      </small>
+    </div>
+  )
+}
+
 function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing: boolean }) {
   const toggle = useAction((store, w: Wish) => toggleWish(store, w))
   const remove = useAction((store, id: string) => store.deleteWish(id))
+  const relevel = useAction((store, level: number) => setWishLevel(store, wish, level))
   const done = !!wish.doneAt
   const late = !done && !!wish.date && daysTo(wish.date, today) < 0
 
@@ -29,9 +56,9 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
         disabled={toggle.isPending}
         onClick={() => toggle.mutate(wish)}
       >
-        {done && '✓'}
+        <WishCoin level={wish.level} done={done} />
       </button>
-      <span className="grow">
+      <div className="grow">
         {wish.title}
         <small className="muted">
           {done
@@ -40,7 +67,7 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
               ? `к ${dateTitle(wish.date, today)} · ${dueText(wish.date, today)}`
               : 'без срока'}
         </small>
-      </span>
+      </div>
       {wish.price > 0 && <span className="money">{formatMoney(wish.price)}</span>}
       {editing && (
         <button
@@ -52,6 +79,7 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
           ×
         </button>
       )}
+      {editing && <CoinPick level={wish.level} disabled={relevel.isPending} onPick={(level) => relevel.mutate(level)} />}
     </li>
   )
 }
@@ -59,16 +87,17 @@ function WishRow({ wish, today, editing }: { wish: Wish; today: string; editing:
 function AddWish() {
   const [title, setTitle] = useState('')
   const [price, setPrice] = useState('')
+  const [level, setLevel] = useState(0)
   const [dated, setDated] = useState(false)
   const [date, setDate] = useState('')
-  const create = useAction((store, w: { title: string; price: number; date: string | null }) => createWish(store, w))
+  const create = useAction((store, w: { title: string; level: number; price: number; date: string | null }) => createWish(store, w))
   const ready = !!title.trim() && (!dated || !!date)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!ready) return
     create.mutate(
-      { title, price: Number(price) || 0, date: dated ? date : null },
+      { title, level, price: Number(price) || 0, date: dated ? date : null },
       {
         onSuccess: () => {
           setTitle('')
@@ -101,6 +130,7 @@ function AddWish() {
           onChange={(e) => setPrice(e.target.value)}
         />
       </div>
+      <CoinPick level={level} onPick={setLevel} />
       <div className="row wrap">
         <div className="tabs" role="radiogroup" aria-label="Срок">
           <button type="button" role="radio" aria-checked={!dated} onClick={() => setDated(false)}>
@@ -145,8 +175,8 @@ function Wishes({ snapshot }: { snapshot: Snapshot }) {
         {shown.length === 0 ? (
           <p className="muted">
             {tab === 'active'
-              ? 'Здесь живёт то, чего хочется: поездки, вещи, мечты. Отметь галочкой — и желание уйдёт в исполненные.'
-              : 'Пока пусто. Сюда уходят желания, отмеченные галочкой.'}
+              ? 'Здесь живёт то, чего хочется: поездки, вещи, мечты. Нажми на монету — и желание уйдёт в исполненные.'
+              : 'Пока пусто. Сюда уходят желания, у которых нажата монета.'}
           </p>
         ) : (
           <>

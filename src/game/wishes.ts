@@ -20,11 +20,24 @@ export function dueText(date: string, today: string): string {
   return `срок прошёл ${-days} ${plural(-days, DAYS)} назад`
 }
 
-/** Сначала желания со сроком — от ближайшего, затем бессрочные в порядке появления. */
-export function sortWishes<T extends { date: string | null; createdAt: string }>(items: T[]): T[] {
-  const dated = items.filter((w) => w.date).sort((a, b) => a.date!.localeCompare(b.date!) || a.createdAt.localeCompare(b.createdAt))
-  const open = items.filter((w) => !w.date).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  return [...dated, ...open]
+/** Насколько сильно хочется: металл монеты у желания, от самого слабого к самому сильному. */
+export const WISH_LEVELS = [
+  { key: 'bronze', name: 'Бронза', hint: 'было бы неплохо' },
+  { key: 'silver', name: 'Серебро', hint: 'хочу' },
+  { key: 'gold', name: 'Золото', hint: 'очень хочу' },
+  { key: 'jade', name: 'Нефрит', hint: 'мечта' },
+] as const
+
+export const wishLevel = (level: number) => WISH_LEVELS[Math.min(WISH_LEVELS.length - 1, Math.max(0, Math.round(level) || 0))]
+
+/** Сначала самые желанные (нефрит → бронза); внутри металла — со сроком от ближайшего, затем бессрочные в порядке появления. */
+export function sortWishes<T extends { level: number; date: string | null; createdAt: string }>(items: T[]): T[] {
+  const byTime = (a: T, b: T): number => {
+    if (a.date && b.date) return a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt)
+    if (a.date || b.date) return a.date ? -1 : 1
+    return a.createdAt.localeCompare(b.createdAt)
+  }
+  return [...items].sort((a, b) => b.level - a.level || byTime(a, b))
 }
 
 export const wishTotal = (items: { price: number }[]): number => items.reduce((sum, w) => sum + w.price, 0)

@@ -87,6 +87,8 @@ export interface Countdown {
 export interface Wish {
   id: string
   title: string
+  /** насколько хочется: 0 — бронза … 3 — нефрит; см. game/wishes.ts */
+  level: number
   /** цена в рублях; 0 — цена не указана */
   price: number
   /** к какому дню хочется, 'ГГГГ-ММ-ДД'; null — без срока */
@@ -209,6 +211,8 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (!Array.isArray(s.subscriptions)) s.subscriptions = []
   if (!Array.isArray(s.countdowns)) s.countdowns = []
   if (!Array.isArray(s.wishes)) s.wishes = []
+  // желания, записанные до появления монет, — бронзовые
+  for (const w of s.wishes) if (typeof w.level !== 'number') w.level = 0
   return s
 }
 

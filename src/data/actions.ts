@@ -274,10 +274,11 @@ export async function createCountdown(store: DataStore, title: string, date: str
 }
 
 /** Новое желание: цена 0 — не указана, date null — без срока. */
-export async function createWish(store: DataStore, wish: { title: string; price: number; date: string | null }): Promise<void> {
+export async function createWish(store: DataStore, wish: { title: string; level: number; price: number; date: string | null }): Promise<void> {
   await store.saveWish({
     id: newId(),
     title: wish.title.trim(),
+    level: wish.level,
     price: Math.max(0, Math.round(wish.price) || 0),
     date: wish.date || null,
     createdAt: new Date().toISOString(),
@@ -288,4 +289,9 @@ export async function createWish(store: DataStore, wish: { title: string; price:
 /** Галочка: исполненное желание уходит в архив, снятая галочка возвращает его в список. */
 export async function toggleWish(store: DataStore, wish: Wish): Promise<void> {
   await store.saveWish({ ...wish, doneAt: wish.doneAt ? null : new Date().toISOString() })
+}
+
+/** Перевыбор монеты: насколько сильно хочется. */
+export async function setWishLevel(store: DataStore, wish: Wish, level: number): Promise<void> {
+  if (level !== wish.level) await store.saveWish({ ...wish, level })
 }
