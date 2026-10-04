@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { leftText, plural, sortByNearness, timeLeft, wisdomFor } from './countdown'
 import { coinGlow, GOAL_LEVELS } from './goals'
 import { rankFor } from './ranks'
 import { averageTitan, materialProgress, titanXp } from './titans'
@@ -109,6 +110,36 @@ describe('titans', () => {
   it('среднее по титанам округляется, как в Excel', () => {
     expect(averageTitan([25, 45, 30, 10, 20].map((value) => ({ value })))).toBe(26)
     expect(averageTitan([])).toBe(0)
+  })
+})
+
+describe('countdown', () => {
+  it('считает дни и часы до начала дня', () => {
+    const now = new Date(2026, 9, 4, 10, 30)
+    expect(timeLeft('2027-01-01', now)).toEqual({ state: 'ahead', days: 88, hours: 13 })
+    expect(timeLeft('2026-10-05', now)).toEqual({ state: 'ahead', days: 0, hours: 13 })
+    expect(timeLeft('2026-10-04', now).state).toBe('today')
+    expect(timeLeft('2026-10-01', now)).toEqual({ state: 'past', days: 3, hours: 0 })
+  })
+
+  it('склоняет дни и часы', () => {
+    expect([1, 2, 5, 11, 21, 22, 112].map((n) => plural(n, ['день', 'дня', 'дней']))).toEqual(['день', 'дня', 'дней', 'дней', 'день', 'дня', 'дней'])
+    expect(leftText({ state: 'ahead', days: 88, hours: 13 })).toBe('88 дней 13 часов')
+    expect(leftText({ state: 'ahead', days: 1, hours: 1 })).toBe('1 день 1 час')
+    expect(leftText({ state: 'ahead', days: 0, hours: 3 })).toBe('3 часа')
+    expect(leftText({ state: 'ahead', days: 0, hours: 0 })).toBe('меньше часа')
+    expect(leftText({ state: 'today', days: 0, hours: 0 })).toBe('сегодня')
+    expect(leftText({ state: 'past', days: 3, hours: 0 })).toBe('прошло 3 дня')
+  })
+
+  it('ставит ближайшие дни первыми, прошедшие — в конец', () => {
+    const items = [{ date: '2026-09-01' }, { date: '2027-01-01' }, { date: '2026-10-04' }, { date: '2026-10-01' }, { date: '2026-11-07' }]
+    expect(sortByNearness(items, '2026-10-04').map((i) => i.date)).toEqual(['2026-10-04', '2026-11-07', '2027-01-01', '2026-10-01', '2026-09-01'])
+  })
+
+  it('даёт одну мысль на день и меняет её назавтра', () => {
+    expect(wisdomFor(new Date(2026, 9, 4, 1))).toBe(wisdomFor(new Date(2026, 9, 4, 23)))
+    expect(wisdomFor(new Date(2026, 9, 4))).not.toBe(wisdomFor(new Date(2026, 9, 5)))
   })
 })
 

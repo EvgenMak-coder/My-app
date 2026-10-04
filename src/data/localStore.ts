@@ -2,6 +2,7 @@ import type { DataStore } from './store'
 import {
   emptySnapshot,
   normalizeSnapshot,
+  type Countdown,
   type Credit,
   type Goal,
   type HistoryPoint,
@@ -160,6 +161,20 @@ export class LocalStore implements DataStore {
   deleteSubscription(id: string): Promise<void> {
     return this.mutate((s) => {
       s.subscriptions = s.subscriptions.filter((x) => x.id !== id)
+    })
+  }
+
+  saveCountdown(countdown: Countdown): Promise<void> {
+    return this.mutate((s) => {
+      const i = s.countdowns.findIndex((x) => x.id === countdown.id)
+      if (i >= 0) s.countdowns[i] = countdown
+      else s.countdowns.push(countdown)
+    })
+  }
+
+  deleteCountdown(id: string): Promise<void> {
+    return this.mutate((s) => {
+      s.countdowns = s.countdowns.filter((x) => x.id !== id)
     })
   }
 

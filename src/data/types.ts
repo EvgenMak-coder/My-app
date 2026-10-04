@@ -75,6 +75,14 @@ export interface Subscription {
   endedAt: string | null
 }
 
+/** Грядущий день на главной: до него идёт отсчёт */
+export interface Countdown {
+  id: string
+  title: string
+  /** 'ГГГГ-ММ-ДД' */
+  date: string
+}
+
 export interface Transaction {
   id: string
   kind: 'income' | 'expense'
@@ -132,6 +140,7 @@ export interface Snapshot {
   salaries: Salary[]
   transactions: Transaction[]
   subscriptions: Subscription[]
+  countdowns: Countdown[]
 }
 
 /** Формат, который пишет scripts/import_excel.py */
@@ -184,6 +193,7 @@ export function normalizeSnapshot(s: Snapshot): Snapshot {
   if (!Array.isArray(s.salaries)) s.salaries = []
   if (!Array.isArray(s.transactions)) s.transactions = []
   if (!Array.isArray(s.subscriptions)) s.subscriptions = []
+  if (!Array.isArray(s.countdowns)) s.countdowns = []
   return s
 }
 
@@ -204,6 +214,7 @@ export function emptySnapshot(): Snapshot {
     salaries: [],
     transactions: [],
     subscriptions: [],
+    countdowns: [],
   }
 }
 
@@ -248,6 +259,7 @@ export function snapshotFromSeed(seed: Seed): Snapshot {
     salaries: (seed.salaries ?? []).map((s) => ({ id: newId(), name: s.name, day: s.day, amount: s.amount })),
     transactions: [],
     subscriptions: [],
+    countdowns: [],
     areaHistory: areas.map((a) => ({ id: newId(), refId: a.id, value: a.value, at })),
     skillHistory: skills.map((s) => ({ id: newId(), refId: s.id, value: s.value, at })),
     xpEvents: [],

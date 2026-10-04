@@ -8,6 +8,7 @@ import {
   type LifeArea,
   type Skill,
   type SkillCategory,
+  type Countdown,
   type Credit,
   type Goal,
   type Salary,
@@ -44,6 +45,7 @@ const tableMissing = (error: Failure | null): boolean =>
   !!error && (error.code === 'PGRST205' || error.code === '42P01')
 
 const NO_SUBSCRIPTIONS = 'В облаке ещё нет таблицы подписок — выполни в Supabase файл 0005_subscriptions.sql'
+const NO_COUNTDOWNS = 'В облаке ещё нет таблицы грядущих дней — выполни в Supabase файл 0006_countdowns.sql'
 
 function rows<T>(res: Result<T[]>): T[] {
   if (res.error) throw new Error(res.error.message)
@@ -79,7 +81,7 @@ export class SupabaseStore implements DataStore {
   constructor(private db: SupabaseClient) {}
 
   async load(): Promise<Snapshot> {
-    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions, subscriptions] = await Promise.all([
+    const [profile, areas, skills, areaHistory, skillHistory, xp, titans, titanHistory, workouts, goals, credits, salaries, transactions, subscriptions, countdowns] = await Promise.all([
       this.db.from('profile').select('dragon_name').maybeSingle(),
       this.db.from('life_areas').select('id,key,name,value,position').order('position'),
       this.db.from('skills').select('id,category,name,value,position').order('position'),
@@ -94,6 +96,7 @@ export class SupabaseStore implements DataStore {
       this.db.from('salaries').select('id,name,day,amount').order('day'),
       this.db.from('transactions').select('id,kind,amount,category,note,at').order('at'),
       this.db.from('subscriptions').select('id,name,amount,day,started_at,ended_at').order('day'),
+      this.db.from('countdowns').select('id,title,date').order('date'),
     ])
     if (profile.error) throw new Error(profile.error.message)
 
@@ -121,6 +124,7 @@ export class SupabaseStore implements DataStore {
       credits: rows<Credit>(credits),
       salaries: rows<Salary>(salaries),
       transactions: rows<Transaction>(transactions),
+      countdowns: tableMissing(countdowns.error) ? [] : rows<Countdown>(countdowns),
       // без таблицы подписок остальное приложение продолжает работать
       subscriptions: (tableMissing(subscriptions.error) ? [] : rows<SubscriptionRow>(subscriptions)).map((r) => ({
         id: r.id,
@@ -218,6 +222,16 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('subscriptions').delete().eq('id', id))
   }
 
+  async saveCountdown(countdown: Countdown): Promise<void> {
+    const res = await this.db.from('countdowns').upsert(countdown)
+    if (tableMissing(res.error)) throw new Error(NO_COUNTDOWNS)
+    check(res)
+  }
+
+  async deleteCountdown(id: string): Promise<void> {
+    check(await this.db.from('countdowns').delete().eq('id', id))
+  }
+
   async setDragonName(name: string): Promise<void> {
     const { data, error } = await this.db.auth.getUser()
     if (error || !data.user) throw new Error('Нужно войти в аккаунт')
@@ -238,6 +252,8 @@ export class SupabaseStore implements DataStore {
     check(await this.db.from('transactions').delete().neq('id', all))
     const cleared = await this.db.from('subscriptions').delete().neq('id', all)
     if (!tableMissing(cleared.error)) check(cleared)
+    const emptied = await this.db.from('countdowns').delete().neq('id', all)
+    if (!tableMissing(emptied.error)) check(emptied)
 
     if (s.areas.length) check(await this.db.from('life_areas').insert(s.areas))
     if (s.skills.length) check(await this.db.from('skills').insert(s.skills))
@@ -260,6 +276,11 @@ export class SupabaseStore implements DataStore {
     if (s.credits.length) check(await this.db.from('credits').insert(s.credits))
     if (s.salaries.length) check(await this.db.from('salaries').insert(s.salaries))
     if (s.transactions.length) check(await this.db.from('transactions').insert(s.transactions))
+    if (s.countdowns.length) {
+      const res = await this.db.from('countdowns').insert(s.countdowns)
+      if (tableMissing(res.error)) throw new Error(NO_COUNTDOWNS)
+      check(res)
+    }
     if (s.subscriptions.length) {
       const res = await this.db.from('subscriptions').insert(s.subscriptions.map(subscriptionRow))
       if (tableMissing(res.error)) throw new Error(NO_SUBSCRIPTIONS)

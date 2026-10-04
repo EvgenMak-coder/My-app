@@ -266,3 +266,8 @@ export async function resumeSubscription(store: DataStore, sub: Subscription, to
   if (sub.endedAt && sub.endedAt >= start) await store.saveSubscription({ ...sub, endedAt: null })
   else await store.saveSubscription({ ...sub, id: newId(), startedAt: start, endedAt: null })
 }
+
+/** Грядущий день на главной: название и дата 'ГГГГ-ММ-ДД'. */
+export async function createCountdown(store: DataStore, title: string, date: string): Promise<void> {
+  await store.saveCountdown({ id: newId(), title: title.trim(), date })
+}
