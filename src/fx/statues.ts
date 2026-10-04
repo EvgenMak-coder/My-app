@@ -20,6 +20,7 @@ import {
   type Object3D,
 } from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { Clay, openness } from './sculpt'
 
 /**
  * Статуэтки титанов — фигуры, вылепленные кодом из тел вращения, складок ткани и выдавленных пластин.
@@ -171,98 +172,128 @@ interface Rig {
   armR: Limb
   legL: Limb
   legR: Limb
-  feet: Mesh[]
   /** множитель ширины: телосложение */
   b: number
 }
 
 /**
- * Манекен: таз, корпус, голова с лицом, руки и ноги на суставах. Рука и нога в покое висят вниз.
+ * Скелет: таз, корпус, голова, руки и ноги на суставах. Рука и нога в покое висят вниз.
+ * Само тело лепится позже, одним куском, по положению суставов (см. sculptBody).
  * Знаки поворотов: плечо и бедро x < 0 — вперёд; локоть x < 0 — сгиб вперёд; колено x > 0 — сгиб назад;
  * z > 0 отводит левую конечность в сторону, z < 0 — правую.
  */
 function rig(m: StatueMaterials, b = 1): Rig {
   const root = new Group()
-  const feet: Mesh[] = []
   const hips = joint(root, [0, 1.0, 0])
-  add(hips, lathe([[0.05, -0.13], [0.13 * b, -0.08], [0.165 * b, 0], [0.155 * b, 0.08], [0.14 * b, 0.15]]), m.main, [0, 0, 0], [0, 0, 0], [1, 1, 0.7])
   const chest = joint(hips, [0, 0.12, 0])
-  // корпус: талия, грудная клетка, скат плеч и шея одним телом
-  add(
-    chest,
-    lathe([[0.14 * b, 0], [0.15 * b, 0.07], [0.17 * b, 0.17], [0.205 * b, 0.3], [0.21 * b, 0.38], [0.17 * b, 0.45], [0.075, 0.5], [0.055, 0.57]]),
-    m.main,
-    [0, 0, 0],
-    [0, 0, 0],
-    [1, 1, 0.66],
-  )
-  // грудные мышцы и лопатки
-  add(chest, ball(0.09 * b), m.main, [0.09 * b, 0.33, 0.085], [0, 0, 0], [1.1, 0.8, 0.5])
-  add(chest, ball(0.09 * b), m.main, [-0.09 * b, 0.33, 0.085], [0, 0, 0], [1.1, 0.8, 0.5])
-  add(chest, ball(0.1 * b), m.main, [0.085 * b, 0.34, -0.08], [0, 0, 0], [1, 1, 0.45])
-  add(chest, ball(0.1 * b), m.main, [-0.085 * b, 0.34, -0.08], [0, 0, 0], [1, 1, 0.45])
-
   const head = joint(chest, [0, 0.64, 0])
-  add(head, ball(0.105), m.main, [0, 0, 0], [0, 0, 0], [0.9, 1.1, 1])
-  add(head, ball(0.08), m.main, [0, -0.065, 0.018], [0, 0, 0], [0.86, 0.78, 0.95])
-  add(head, box(0.024, 0.05, 0.034), m.main, [0, -0.018, 0.098], [-18, 0, 0])
-  add(head, box(0.13, 0.02, 0.04), m.main, [0, 0.03, 0.08])
-  // глаза в тени надбровья, скулы и губы
-  for (const side of [1, -1]) {
-    add(head, ball(0.015), m.accent, [0.037 * side, 0.008, 0.086], [0, 0, 0], [1.25, 0.7, 0.7])
-    add(head, ball(0.03), m.main, [0.055 * side, -0.028, 0.068], [0, 0, 0], [1, 0.8, 0.6])
-  }
-  add(head, box(0.05, 0.012, 0.02), m.main, [0, -0.062, 0.088])
-  add(head, ball(0.028), m.main, [0, -0.1, 0.07], [0, 0, 0], [1.1, 0.8, 0.8])
-  add(head, ball(0.024), m.main, [0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
-  add(head, ball(0.024), m.main, [-0.097, -0.005, 0], [0, 0, 0], [0.5, 1, 0.8])
+  // зрачки тёмным тоном — в глазницах, которые вылепит sculptBody
+  for (const side of [1, -1]) add(head, ball(0.0125), m.accent, [0.037 * side, 0.004, 0.089], [0, 0, 0], [1.1, 0.8, 0.8])
 
   const arm = (side: 1 | -1): Limb => {
     const shoulder = joint(chest, [0.225 * b * side, 0.4, 0])
-    add(shoulder, ball(0.083 * b), m.main, [0, 0, 0], [0, 0, 0], [1, 1.05, 1])
-    add(shoulder, limb([0.062 * b, 0.07 * b, 0.058 * b, 0.048 * b], 0.3), m.main)
     const elbow = joint(shoulder, [0, -0.3, 0])
-    add(elbow, ball(0.048 * b), m.main)
-    add(elbow, limb([0.048 * b, 0.055 * b, 0.042 * b, 0.034 * b], 0.27), m.main)
     const hand = joint(elbow, [0, -0.27, 0])
-    // кисть сжата в кулак, сбоку большой палец
-    add(hand, ball(0.046), m.main, [0, -0.045, 0], [0, 0, 0], [0.82, 1.15, 0.72])
-    add(hand, ball(0.02), m.main, [0.03 * side, -0.035, 0.022], [0, 0, 0], [0.8, 1.4, 0.8])
-    // костяшки четырёх пальцев
-    for (let i = 0; i < 4; i++) add(hand, ball(0.013), m.main, [(-0.027 + i * 0.018) * side, -0.08, 0.012], [0, 0, 0], [0.9, 1.1, 1.3])
-    // ключица и трапеция к шее
-    add(shoulder, ball(0.05 * b), m.main, [-0.1 * b * side, 0.06, -0.01], [0, 0, 0], [1.9, 0.75, 0.9])
     return { root: shoulder, mid: elbow, end: hand }
   }
   const leg = (side: 1 | -1): Limb => {
     const hip = joint(hips, [0.095 * b * side, -0.06, 0])
-    add(hip, limb([0.092 * b, 0.097 * b, 0.08 * b, 0.062 * b], 0.45), m.main)
     const knee = joint(hip, [0, -0.45, 0])
-    add(knee, ball(0.06 * b), m.main)
-    // коленная чашечка и икра
-    add(knee, ball(0.036 * b), m.main, [0, 0, 0.04 * b], [0, 0, 0], [1, 1.2, 0.7])
-    add(knee, ball(0.055 * b), m.main, [0, -0.13, -0.022 * b], [0, 0, 0], [0.95, 1.7, 0.8])
-    add(knee, limb([0.058 * b, 0.07 * b, 0.05 * b, 0.04 * b], 0.4), m.main)
     const ankle = joint(knee, [0, -0.4, 0])
-    feet.push(add(ankle, ball(0.06), m.main, [0, -0.035, 0.065], [0, 0, 0], [0.82, 0.62, 2]))
-    add(ankle, ball(0.045), m.main, [0, -0.02, -0.02])
     return { root: hip, mid: knee, end: ankle }
   }
-  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), feet, b }
+  return { root, hips, chest, head, armL: arm(1), armR: arm(-1), legL: leg(1), legR: leg(-1), b }
 }
 
-/** Ставит фигуру ступнями на землю и сплавляет все детали в две сетки — по одной на тон материала. */
+/** Точка сустава (или точка рядом с ним, в его координатах) в координатах статуэтки. */
+const spot = (g: Object3D, local: V3 = [0, 0, 0]): V3 => new Vector3(...local).applyMatrix4(g.matrixWorld).toArray() as V3
+
+/**
+ * Лепит тело одним куском по готовой позе: мышцы и суставы плавно сливаются, швов между частями нет.
+ * Голова лепится отдельно и мельче — на лице важны нос, скулы, глазницы и губы.
+ */
+function sculptBody(r: Rig): { clays: Clay[]; parts: BufferGeometry[] } {
+  const b = r.b
+  const bounds = new Box3()
+  for (const g of [r.hips, r.chest, r.head, ...[r.armL, r.armR, r.legL, r.legR].flatMap((l) => [l.root, l.mid, l.end])]) {
+    bounds.expandByPoint(new Vector3(...spot(g)))
+  }
+  bounds.expandByScalar(0.26)
+
+  const body = new Clay(bounds.min, bounds.max, 0.016)
+  const hips = r.hips.matrixWorld
+  const chest = r.chest.matrixWorld
+  // корпус: таз, талия, грудная клетка, грудные мышцы, спина
+  body.add(hips, { kind: 'ball', at: [0, -0.01, 0], r: [0.168 * b, 0.14, 0.115 * b] })
+  body.add(chest, { kind: 'ball', at: [0, 0.08, 0], r: [0.148 * b, 0.17, 0.1 * b] })
+  body.add(chest, { kind: 'ball', at: [0, 0.29, 0], r: [0.2 * b, 0.2, 0.128 * b] })
+  for (const side of [1, -1]) {
+    body.add(chest, { kind: 'ball', at: [0.088 * b * side, 0.335, 0.075], r: [0.1 * b, 0.072, 0.06] }, 0.02)
+    body.add(chest, { kind: 'ball', at: [0.1 * b * side, 0.3, -0.07], r: [0.11 * b, 0.16, 0.06] })
+    body.add(hips, { kind: 'ball', at: [0.085 * b * side, -0.07, -0.07], r: [0.1 * b, 0.105, 0.09] })
+  }
+  // шея и трапеции
+  body.add(null, { kind: 'bone', a: spot(r.chest, [0, 0.46, 0]), b: spot(r.head, [0, -0.06, 0]), ra: 0.06, rb: 0.052 })
+  for (const arm of [r.armL, r.armR]) {
+    body.add(null, { kind: 'bone', a: spot(r.chest, [0, 0.5, -0.01]), b: spot(arm.root, [0, 0.02, 0]), ra: 0.058, rb: 0.062 * b })
+    body.add(arm.root.matrixWorld, { kind: 'ball', at: [0, 0, 0], r: 0.085 * b })
+    body.add(null, { kind: 'bone', a: spot(arm.root), b: spot(arm.mid), ra: 0.066 * b, rb: 0.05 * b })
+    body.add(arm.root.matrixWorld, { kind: 'ball', at: [0, -0.14, 0.014], r: [0.058 * b, 0.1, 0.06 * b] }, 0.02)
+    body.add(null, { kind: 'bone', a: spot(arm.mid), b: spot(arm.end), ra: 0.05 * b, rb: 0.036 * b })
+    body.add(arm.mid.matrixWorld, { kind: 'ball', at: [0, -0.08, 0.006], r: [0.05 * b, 0.09, 0.052 * b] }, 0.02)
+    body.add(arm.end.matrixWorld, { kind: 'ball', at: [0, -0.045, 0], r: [0.04, 0.054, 0.035] }, 0.02)
+  }
+  for (const leg of [r.legL, r.legR]) {
+    body.add(null, { kind: 'bone', a: spot(leg.root), b: spot(leg.mid), ra: 0.098 * b, rb: 0.066 * b })
+    body.add(leg.root.matrixWorld, { kind: 'ball', at: [0, -0.2, 0.026], r: [0.085 * b, 0.18, 0.085 * b] })
+    body.add(leg.mid.matrixWorld, { kind: 'ball', at: [0, 0, 0.02], r: 0.056 * b }, 0.02)
+    body.add(null, { kind: 'bone', a: spot(leg.mid), b: spot(leg.end), ra: 0.06 * b, rb: 0.04 * b })
+    body.add(leg.mid.matrixWorld, { kind: 'ball', at: [0, -0.13, -0.026], r: [0.058 * b, 0.12, 0.06 * b] }, 0.02)
+    body.add(leg.end.matrixWorld, { kind: 'ball', at: [0, -0.04, 0.065], r: [0.05, 0.04, 0.12] }, 0.02)
+    body.add(leg.end.matrixWorld, { kind: 'ball', at: [0, -0.03, -0.02], r: 0.045 }, 0.02)
+  }
+
+  const centre = new Vector3(...spot(r.head))
+  const face = new Clay(centre.clone().subScalar(0.2), centre.clone().addScalar(0.2), 0.0065)
+  const head = r.head.matrixWorld
+  const k = 0.012
+  face.add(head, { kind: 'ball', at: [0, 0.012, -0.008], r: [0.092, 0.116, 0.108] }, k)
+  face.add(head, { kind: 'ball', at: [0, -0.058, 0.018], r: [0.074, 0.07, 0.078] }, 0.02)
+  face.add(head, { kind: 'ball', at: [0, -0.105, 0.052], r: [0.036, 0.03, 0.034] }, 0.02)
+  face.add(head, { kind: 'bone', a: [0, -0.07, -0.005], b: [0, -0.2, -0.02], ra: 0.054, rb: 0.056 }, 0.02)
+  for (const side of [1, -1]) {
+    face.add(head, { kind: 'ball', at: [0.052 * side, -0.022, 0.066], r: [0.03, 0.024, 0.03] }, k)
+    face.add(head, { kind: 'ball', at: [0.097 * side, -0.004, -0.006], r: [0.012, 0.03, 0.02] }, 0.008)
+    face.carve(head, { kind: 'ball', at: [0.038 * side, 0.004, 0.108], r: [0.022, 0.016, 0.02] }, 0.012)
+  }
+  face.add(head, { kind: 'bone', a: [-0.05, 0.03, 0.082], b: [0.05, 0.03, 0.082], ra: 0.016, rb: 0.016 }, k)
+  face.add(head, { kind: 'bone', a: [0, 0.012, 0.097], b: [0, -0.036, 0.121], ra: 0.011, rb: 0.016 }, 0.01)
+  face.add(head, { kind: 'ball', at: [0, -0.041, 0.121], r: [0.019, 0.014, 0.015] }, 0.008)
+  face.add(head, { kind: 'bone', a: [-0.02, -0.071, 0.093], b: [0.02, -0.071, 0.093], ra: 0.01, rb: 0.01 }, 0.008)
+  face.carve(head, { kind: 'bone', a: [-0.022, -0.072, 0.106], b: [0.022, -0.072, 0.106], ra: 0.003, rb: 0.003 }, 0.004)
+
+  return { clays: [body, face], parts: [body.build(), face.build()] }
+}
+
+/**
+ * Ставит фигуру на землю, лепит тело, затеняет складки и сплавляет все детали в две сетки —
+ * по одной на тон материала.
+ */
 function finish(r: Rig, m: StatueMaterials, size = 1): Group {
   r.root.updateMatrixWorld(true)
-  const bounds = new Box3()
-  for (const foot of r.feet) bounds.expandByObject(foot)
-  r.root.position.y -= bounds.min.y
+  // подошвы: пятка и носок каждой стопы
+  let lowest = Infinity
+  for (const leg of [r.legL, r.legR]) {
+    for (const z of [-0.04, 0.16]) lowest = Math.min(lowest, spot(leg.end, [0, -0.078, z])[1])
+  }
+  r.root.position.y -= lowest
   r.root.scale.setScalar(size)
   r.root.updateMatrixWorld(true)
 
+  const { clays, parts: flesh } = sculptBody(r)
   const statue = new Group()
   for (const material of [m.main, m.accent]) {
-    const parts: BufferGeometry[] = []
+    const parts: BufferGeometry[] = material === m.main ? [...flesh] : []
     r.root.traverse((object) => {
       if (!(object instanceof Mesh) || object.material !== material) return
       const part: BufferGeometry = object.geometry.index ? object.geometry.toNonIndexed() : object.geometry.clone()
@@ -274,11 +305,23 @@ function finish(r: Rig, m: StatueMaterials, size = 1): Group {
       object.geometry.dispose()
     })
     if (!parts.length) continue
-    const cast = new Mesh(mergeGeometries(parts), material)
+    const merged = mergeGeometries(parts)
+    for (const part of parts) part.dispose()
+
+    // тень в складках: чем сильнее точка зажата телом, тем темнее её цвет
+    const position = merged.getAttribute('position')
+    const normal = merged.getAttribute('normal')
+    const shade = new Float32Array(position.count * 3)
+    for (let i = 0; i < position.count; i++) {
+      const open = openness(clays, position.getX(i), position.getY(i), position.getZ(i), normal.getX(i), normal.getY(i), normal.getZ(i))
+      shade.fill(0.3 + 0.7 * open, i * 3, i * 3 + 3)
+    }
+    merged.setAttribute('color', new Float32BufferAttribute(shade, 3))
+
+    const cast = new Mesh(merged, material)
     cast.castShadow = true
     cast.receiveShadow = true
     statue.add(cast)
-    for (const part of parts) part.dispose()
   }
   return statue
 }
@@ -541,11 +584,10 @@ function hunter(m: StatueMaterials): Group {
   pose(r.armL.root, 40, 0, 20)
   pose(r.armL.mid, -40)
 
-  // пресс и ключицы: торс обтянут, мышцы читаются
+  // пресс: торс обтянут, мышцы читаются
   for (let row = 0; row < 3; row++) {
     for (const side of [1, -1]) add(r.chest, ball(0.036 * b), m.main, [0.036 * b * side, 0.2 - row * 0.068, 0.098 * b - row * 0.004], [0, 0, 0], [1, 0.85, 0.5])
   }
-  add(r.chest, box(0.3 * b, 0.016, 0.02), m.main, [0, 0.44, 0.075 * b])
 
   // широкие штаны, собранные у щиколотки, и пояс с концом
   for (const leg of [r.legL, r.legR]) {

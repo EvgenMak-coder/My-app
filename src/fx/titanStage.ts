@@ -133,7 +133,12 @@ function surface(material: MeshStandardMaterial): SurfaceUniforms {
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
         vec2 sp = surfacePattern(vObj);
-        float worn = smoothstep(0.24, 0.6, sp.x);
+        // цвет вершины несёт тень складок: там же, в углублениях, собирается патина
+        float cavity = 1.0;
+        #ifdef USE_COLOR
+          cavity = smoothstep(0.3, 0.9, vColor.r);
+        #endif
+        float worn = smoothstep(0.24, 0.6, sp.x) * mix(0.25, 1.0, cavity);
         if (uKind < 0.5) diffuseColor.rgb *= mix(0.6, 1.14, sp.x);
         else if (uKind < 1.5) diffuseColor.rgb = mix(mix(diffuseColor.rgb * 0.55, uPatina, uPatinaMix), diffuseColor.rgb * 1.05, worn);
         else diffuseColor.rgb *= mix(0.62, 1.32, sp.x);`,
@@ -205,6 +210,8 @@ export class TitanStage {
   private place = 0
   private angle = 0
   private drag: { id: number; x: number; shift: number } | null = null
+  /** отложенная лепка остальных статуэток */
+  private pending: ReturnType<typeof setTimeout>[] = []
   private still = prefersReducedMotion()
 
   constructor(
@@ -287,8 +294,8 @@ export class TitanStage {
     specs.forEach((spec, i) => {
       // двусторонние: плащи и складки ткани — тонкие поверхности, их видно с изнанки
       const materials: StatueMaterials = {
-        main: new MeshStandardMaterial({ side: DoubleSide }),
-        accent: new MeshStandardMaterial({ side: DoubleSide }),
+        main: new MeshStandardMaterial({ side: DoubleSide, vertexColors: true }),
+        accent: new MeshStandardMaterial({ side: DoubleSide, vertexColors: true }),
       }
       const ring = new MeshStandardMaterial({ color: 0x000000, emissive: this.rim.color, emissiveIntensity: 0 })
       const holder = new Group()
@@ -301,7 +308,15 @@ export class TitanStage {
       glow.position.y = 0.1
       const turn = new Group()
       turn.position.y = 0.1
-      turn.add(buildStatue(spec.key, materials))
+      // лепка одной фигуры занимает заметное время: выбранную лепим сразу, остальные — по очереди,
+      // чтобы страница не замирала при входе
+      const sculpt = () => {
+        turn.add(buildStatue(spec.key, materials))
+        this.render()
+      }
+      const order = (i - this.index + specs.length) % specs.length
+      if (order === 0) sculpt()
+      else this.pending.push(setTimeout(sculpt, 60 + order * 90))
       holder.add(base, glow, turn)
       this.ring.add(holder)
       this.slots.push({ key: spec.key, holder, turn, materials, surfaces: [surface(materials.main), surface(materials.accent)], ring, spin: 0, size: SIDE_SIZE })
@@ -449,6 +464,8 @@ export class TitanStage {
   }
 
   private clear(): void {
+    for (const timer of this.pending) clearTimeout(timer)
+    this.pending = []
     this.ring.traverse((object) => {
       if (object instanceof Mesh) {
         object.geometry.dispose()
