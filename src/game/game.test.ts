@@ -261,8 +261,8 @@ describe('treasury', () => {
   })
 
   it('считает погашенную часть кредита', () => {
-    expect(paidPercent(290000, 253663)).toBe(13)
-    expect(paidPercent(140000, 0)).toBe(100)
+    expect(paidPercent(200000, 174000)).toBe(13)
+    expect(paidPercent(100000, 0)).toBe(100)
     expect(paidPercent(0, 0)).toBe(100)
   })
 
