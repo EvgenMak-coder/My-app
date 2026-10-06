@@ -82,7 +82,7 @@ def read_goals(ws):
 
 
 def read_credits(values, formulas):
-    """Кредиты: название в A, остаток в B; исходная сумма спрятана в формуле колонки C (1-ROUND(B16/290000,2))."""
+    """Кредиты: название в A, остаток в B; исходная сумма спрятана в формуле колонки C (1-ROUND(B16/100000,2))."""
     credits = []
     in_block = False
     for row in range(1, values.max_row + 1):
@@ -102,7 +102,7 @@ def read_credits(values, formulas):
 
 
 def read_salaries(ws):
-    """Выплаты: строки вида «5го сентября | 120000» и «20го | 30000»; берём по одной на каждое число месяца."""
+    """Выплаты: строки вида «5го сентября | 50000» и «20го | 20000»; берём по одной на каждое число месяца."""
     by_day = {}
     for row in range(1, ws.max_row + 1):
         label = ws.cell(row=row, column=1).value
